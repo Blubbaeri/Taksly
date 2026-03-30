@@ -1,0 +1,49 @@
+{
+    "expo": {
+        "name": "Taskly",
+        "slug": "taskly",
+        "scheme": "taskly",
+        "version": "1.0.0",
+        "orientation": "portrait",
+        "icon": "./assets/images/icon.png",
+        "userInterfaceStyle": "dark",
+        "splash": {
+            "image": "./assets/images/splash-icon.png",
+            "resizeMode": "contain",
+            "backgroundColor": "#0F172A"
+        },
+        "ios": {
+            "supportsTablet": true,
+            "bundleIdentifier": "com.taksly.app"
+        },
+        "android": {
+            "adaptiveIcon": {
+                "foregroundImage": "./assets/images/adaptive-icon.png",
+                "backgroundColor": "#0F172A"
+            },
+            "intentFilters": [
+                {
+                    "action": "VIEW",
+                    "autoVerify": true,
+                    "data": [
+                        {
+                            "scheme": "taskly"
+                        }
+                    ],
+                    "category": ["BROWSABLE", "DEFAULT"]
+                }
+            ]
+        },
+        "web": {
+            "favicon": "./assets/images/favicon.png"
+        },
+        "plugins": [
+            [
+                "expo-image-picker",
+                {
+                    "cameraPermission": "Izinkan akses kamera untuk scan struk"
+                }
+            ]
+        ]
+    }
+}
