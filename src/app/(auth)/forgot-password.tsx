@@ -77,9 +77,8 @@ export default function ForgotPasswordScreen() {
             return;
         }
 
-        // createURL otomatis pakai exp:// di Expo Go, taskly:// di production build
-        // URL web page yang di-host — ganti setelah deploy
-        const redirectTo = "https://YOUR_USERNAME.github.io/taksly/reset-password.html";
+        // URL web page yang di-host di GitHub Pages
+        const redirectTo = "https://blubbaeri.github.io/Taksly/web/reset-password.html";
 
         setLoading(true);
         const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
