@@ -2,16 +2,14 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Session } from '@supabase/supabase-js';
-import { ActivityIndicator, View, Alert, AppState, AppStateStatus } from 'react-native';
-import { useTheme, ThemeProvider } from '../../theme/ThemeContext';
+import { View, Alert, AppState, AppStateStatus } from 'react-native';
+import { ThemeProvider } from '../../theme/ThemeContext';
 import { SESSION_TIMEOUT } from '../../lib/auth';
+import { LoadingProvider } from '../context/LoadingContext';
 
 export default function RootLayout() {
-    const theme = useTheme();
-    const [isCheckingSession, setIsCheckingSession] = useState(true);
     const lastActivityRef = useRef<number>(Date.now());
     const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
@@ -31,28 +29,29 @@ export default function RootLayout() {
             message,
             [{ text: "Login Again", onPress: () => router.replace('/(auth)/login') }]
         );
-        router.replace('/(auth)/login');
     };
 
     const checkInactivity = async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return; // Not logged in, skip
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return; 
 
-        const now = Date.now();
-        const inactiveTime = now - lastActivityRef.current;
+            const now = Date.now();
+            const inactiveTime = now - lastActivityRef.current;
 
-        if (inactiveTime >= SESSION_TIMEOUT) {
-            console.log(`[AutoLogout] Inactive for ${inactiveTime}ms. Logging out...`);
-            await performAutoLogout('inactivity');
+            if (inactiveTime >= SESSION_TIMEOUT) {
+                await performAutoLogout('inactivity');
+            }
+        } catch (e) {
+            // silent fail for balance check
         }
     };
 
     useEffect(() => {
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            if (event === 'SIGNED_IN') {
-                lastActivityRef.current = Date.now(); // Reset on sign in
-                router.replace('/(tabs)');
-            } else if (event === 'SIGNED_OUT') {
+        // Global auth listener for SIGNED_OUT events (e.g. from logout button or timeout)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+            console.log(`[RootLayout] Global Auth Event: ${event}`);
+            if (event === 'SIGNED_OUT') {
                 router.replace('/(auth)/login');
             }
         });
@@ -60,7 +59,6 @@ export default function RootLayout() {
         // Background / Foreground check
         const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
             if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
-                // If returning to foreground, check if it was long enough to timeout
                 checkInactivity();
             }
             appStateRef.current = nextAppState;
@@ -71,9 +69,7 @@ export default function RootLayout() {
             if (appStateRef.current === 'active') {
                 checkInactivity();
             }
-        }, 30000); // 30 seconds
-
-        setIsCheckingSession(false);
+        }, 30000);
 
         return () => {
             subscription.unsubscribe();
@@ -85,22 +81,25 @@ export default function RootLayout() {
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <SafeAreaProvider>
-                <ThemeProvider>
-                    <View 
-                        style={{ flex: 1 }} 
-                        onStartShouldSetResponderCapture={() => {
-                            handleResetInactivity();
-                            return false; // Don't block interaction
-                        }}
-                    >
-                        <Stack screenOptions={{ headerShown: false }}>
-                            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                            <Stack.Screen name="+not-found" options={{ title: 'Oops!' }} />
-                        </Stack>
-                        <StatusBar style="light" />
-                    </View>
-                </ThemeProvider>
+                <LoadingProvider>
+                    <ThemeProvider>
+                        <View 
+                            style={{ flex: 1 }} 
+                            onStartShouldSetResponderCapture={() => {
+                                handleResetInactivity();
+                                return false; // Don't block interaction
+                            }}
+                        >
+                            <Stack screenOptions={{ headerShown: false }}>
+                                <Stack.Screen name="index" />
+                                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                                <Stack.Screen name="+not-found" options={{ title: 'Oops!' }} />
+                            </Stack>
+                            <StatusBar style="light" />
+                        </View>
+                    </ThemeProvider>
+                </LoadingProvider>
             </SafeAreaProvider>
         </GestureHandlerRootView>
     );

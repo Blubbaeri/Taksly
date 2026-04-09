@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
     View, Text, TouchableOpacity, StyleSheet,
     StatusBar, ActivityIndicator,
@@ -8,34 +8,41 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../../theme/ThemeContext';
+import { useLoading } from '../../context/LoadingContext';
 
-// ─── Theme ────────────────────────────────────────────────────────────────────
+// ─── Theme Helper ─────────────────────────────────────────────────────────────
 
-const C = {
-    bg: "#08080E",
-    surfaceHigh: "#1C1C2E",
-    border: "#2C2C3E",
-    borderSoft: "#1C1C2E",
-    primary: "#7C6FFF",
-    primaryGlow: "rgba(124,111,255,0.08)",
-    primaryBorder: "rgba(124,111,255,0.2)",
-    primaryText: "#B8B2FF",
-    danger: "#FF5252",
-    dangerDim: "rgba(255,82,82,0.08)",
-    dangerBorder: "rgba(255,82,82,0.22)",
-    text: "#FFFFFF",
-    textSub: "#9494B0",
-    textMid: "#5A5A78",
-    muted: "#1E2336",
-    sheet: "#12121A",
-};
+// We replace the hardcoded C object with a function that takes the current theme
+const getC = (t: ReturnType<typeof useTheme>) => ({
+    bg: t.colors.background,
+    surfaceHigh: t.colors.surfaceHighlight,
+    border: t.colors.border,
+    borderSoft: 'rgba(255,255,255,0.05)',
+    primary: t.colors.primary,
+    primaryGlow: 'rgba(124,111,255,0.08)',
+    primaryBorder: 'rgba(124,111,255,0.2)',
+    primaryText: t.colors.primary,
+    danger: t.colors.danger,
+    dangerDim: 'rgba(255,82,82,0.08)',
+    dangerBorder: 'rgba(255,82,82,0.22)',
+    text: t.colors.textPrimary,
+    textSub: t.colors.textMuted,
+    textMid: t.colors.textSecondary,
+    muted: t.colors.border,
+    sheet: t.colors.surface,
+});
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function Profile() {
+    const theme = useTheme();
+    const C = getC(theme);
+    const { styles, statStyles, menuStyles, mfStyles } = useMemo(() => getStyles(C), [C]);
+
+    const { setGlobalLoading } = useLoading();
     const [user, setUser] = useState<any>(null);
     const [profile, setProfile] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState({ tasks: 0, finance: 0, efficiency: 0 });
     const [showEditModal, setShowEditModal] = useState(false);
     const [editNickname, setEditNickname] = useState('');
@@ -47,6 +54,7 @@ export default function Profile() {
 
     const fetchProfile = async () => {
         try {
+            setGlobalLoading(true);
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
                 setUser(session.user);
@@ -91,12 +99,13 @@ export default function Profile() {
         } catch (error) {
             console.error('Error fetching profile:', error);
         } finally {
-            setLoading(false);
+            setGlobalLoading(false);
         }
     };
 
     const handleUpdateProfile = async () => {
         try {
+            setGlobalLoading(true);
             setSaving(true);
             const { error } = await supabase
                 .from('user_profiles')
@@ -110,6 +119,7 @@ export default function Profile() {
             alert('Gagal update profil: ' + error.message);
         } finally {
             setSaving(false);
+            setGlobalLoading(false);
         }
     };
 
@@ -122,13 +132,7 @@ export default function Profile() {
         }
     };
 
-    if (loading) {
-        return (
-            <View style={styles.loading}>
-                <ActivityIndicator size="large" color={C.primary} />
-            </View>
-        );
-    }
+    // The global loader handles initial data fetching
 
     const displayName = profile?.nickname || profile?.full_name || user?.email?.split('@')[0] || 'User';
     const initial = displayName.substring(0, 2).toUpperCase();
@@ -140,7 +144,7 @@ export default function Profile() {
     };
 
     return (
-        <SafeAreaView style={styles.safe}>
+        <SafeAreaView style={[styles.safe, { backgroundColor: C.bg }]}>
             <StatusBar barStyle="light-content" backgroundColor={C.bg} />
 
             {/* Ambient orbs */}
@@ -179,29 +183,38 @@ export default function Profile() {
 
                 {/* ── Stats ── */}
                 <View style={styles.statsRow}>
-                    <StatCard label="Tasks" value={String(stats.tasks)} />
+                    <StatCard label="Tasks" value={String(stats.tasks)} C={C} statStyles={statStyles} />
                     <StatCard
                         label="Balance"
                         value={formatCurrency(stats.finance)}
                         danger={stats.finance < 0}
+                        C={C}
+                        statStyles={statStyles}
                     />
-                    <StatCard label="Efficiency" value={`${stats.efficiency}%`} highlight />
+                    <StatCard label="Efficiency" value={`${stats.efficiency}%`} highlight C={C} statStyles={statStyles} />
                 </View>
 
                 {/* ── Divider ── */}
                 <View style={styles.divider} />
 
                 {/* ── Menu ── */}
-                <View style={styles.menuSection}>
-                    <Text style={styles.sectionLabel}>Pengaturan</Text>
+                <View style={[styles.menuSection, { backgroundColor: C.bg }]}>
+                    <Text style={[styles.sectionLabel, { color: C.textSub }]}>Pengaturan</Text>
 
                     <MenuItem
                         icon="person-outline"
                         label="Edit Profile"
                         onPress={() => setShowEditModal(true)}
+                        C={C}
+                        menuStyles={menuStyles}
                     />
-                    <MenuItem icon="color-palette-outline" label="Appearance" />
-                    <MenuItem icon="shield-checkmark-outline" label="Security" />
+                    <MenuItem
+                        icon="wallet-outline"
+                        label="Finance"
+                        onPress={() => router.push('/settings/finance')}
+                        C={C}
+                        menuStyles={menuStyles}
+                    />
                 </View>
 
                 {/* ── Logout ── */}
@@ -242,6 +255,8 @@ export default function Profile() {
                             focused={focusedField === 'nickname'}
                             onFocus={() => setFocusedField('nickname')}
                             onBlur={() => setFocusedField(null)}
+                            C={C}
+                            mfStyles={mfStyles}
                         />
                         <ModalField
                             label="Bio"
@@ -252,6 +267,8 @@ export default function Profile() {
                             onFocus={() => setFocusedField('bio')}
                             onBlur={() => setFocusedField(null)}
                             multiline
+                            C={C}
+                            mfStyles={mfStyles}
                         />
 
                         <TouchableOpacity
@@ -274,105 +291,51 @@ export default function Profile() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatCard({ label, value, danger = false, highlight = false }: {
-    label: string; value: string; danger?: boolean; highlight?: boolean;
+function StatCard({ label, value, danger = false, highlight = false, C, statStyles }: {
+    label: string; value: string; danger?: boolean; highlight?: boolean; C: any; statStyles: any;
 }) {
     return (
-        <View style={[statStyles.card, highlight && statStyles.cardHighlight]}>
-            <Text style={[statStyles.value, danger && { color: C.danger }, highlight && { color: C.primary }]}>
+        <View style={[statStyles.card, { backgroundColor: C.surfaceHigh, borderColor: C.border }, highlight && { borderColor: C.primaryBorder, backgroundColor: C.primaryGlow }]}>
+            <Text style={[statStyles.value, { color: C.text }, danger && { color: C.danger }, highlight && { color: C.primary }]}>
                 {value}
             </Text>
-            <Text style={statStyles.label}>{label}</Text>
+            <Text style={[statStyles.label, { color: C.textSub }]}>{label}</Text>
         </View>
     );
 }
 
-const statStyles = StyleSheet.create({
-    card: {
-        flex: 1,
-        backgroundColor: C.surfaceHigh,
-        borderRadius: 14,
-        borderWidth: 1,
-        borderColor: C.border,
-        paddingVertical: 16,
-        alignItems: 'center',
-    },
-    cardHighlight: {
-        borderColor: C.primaryBorder,
-        backgroundColor: C.primaryGlow,
-    },
-    value: {
-        color: C.text,
-        fontSize: 16,
-        fontWeight: '700',
-        letterSpacing: -0.3,
-        marginBottom: 4,
-    },
-    label: {
-        color: C.textSub,
-        fontSize: 11,
-        fontWeight: '600',
-        letterSpacing: 0.5,
-        textTransform: 'uppercase',
-    },
-});
+// Cleaned up
 
-function MenuItem({ icon, label, onPress }: {
-    icon: any; label: string; onPress?: () => void;
+function MenuItem({ icon, label, onPress, C, menuStyles }: {
+    icon: any; label: string; onPress?: () => void; C: any; menuStyles: any;
 }) {
     return (
         <TouchableOpacity
-            style={menuStyles.item}
+            style={[menuStyles.item, { backgroundColor: C.surfaceHigh, borderColor: C.border }]}
             onPress={onPress}
             activeOpacity={0.72}
         >
-            <View style={menuStyles.iconBox}>
+            <View style={[menuStyles.iconBox, { backgroundColor: C.primaryGlow }]}>
                 <Ionicons name={icon} size={16} color={C.primaryText} />
             </View>
-            <Text style={menuStyles.label}>{label}</Text>
+            <Text style={[menuStyles.label, { color: C.text }]}>{label}</Text>
             <Ionicons name="chevron-forward" size={14} color={C.textSub} style={{ marginLeft: 'auto' }} />
         </TouchableOpacity>
     );
 }
 
-const menuStyles = StyleSheet.create({
-    item: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        paddingVertical: 14,
-        paddingHorizontal: 16,
-        backgroundColor: C.surfaceHigh,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: C.border,
-        marginBottom: 8,
-    },
-    iconBox: {
-        width: 30,
-        height: 30,
-        borderRadius: 8,
-        backgroundColor: C.primaryGlow,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    label: {
-        color: C.text,
-        fontSize: 14,
-        fontWeight: '500',
-    },
-});
+// Cleaned up
 
-function ModalField({ label, placeholder, value, onChangeText, focused, onFocus, onBlur, multiline = false }: {
+function ModalField({ label, placeholder, value, onChangeText, focused, onFocus, onBlur, multiline = false, C, mfStyles }: {
     label: string; placeholder: string; value: string;
     onChangeText: (t: string) => void; focused: boolean;
-    onFocus: () => void; onBlur: () => void; multiline?: boolean;
+    onFocus: () => void; onBlur: () => void; multiline?: boolean; C: any; mfStyles: any;
 }) {
     return (
-        <View style={[mfStyles.wrap, focused && mfStyles.wrapFocused, multiline && mfStyles.wrapMulti]}>
-            <Text style={[mfStyles.label, focused && mfStyles.labelFocused]}>{label}</Text>
+        <View style={[mfStyles.wrap, { borderColor: C.border }, focused && { borderColor: C.primaryBorder, backgroundColor: C.primaryGlow }, multiline && mfStyles.wrapMulti]}>
+            <Text style={[mfStyles.label, { color: C.textSub }, focused && { color: C.primaryText }]}>{label}</Text>
             <TextInput
-                style={[mfStyles.input, multiline && mfStyles.inputMulti]}
+                style={[mfStyles.input, { color: C.text }, multiline && mfStyles.inputMulti]}
                 placeholder={placeholder}
                 placeholderTextColor={C.textSub}
                 value={value}
@@ -383,70 +346,131 @@ function ModalField({ label, placeholder, value, onChangeText, focused, onFocus,
                 numberOfLines={multiline ? 3 : 1}
                 textAlignVertical={multiline ? 'top' : 'center'}
             />
-            {focused && <View style={mfStyles.activeLine} />}
+            {focused && <View style={[mfStyles.activeLine, { backgroundColor: C.primary }]} />}
         </View>
     );
 }
 
-const mfStyles = StyleSheet.create({
-    wrap: {
-        backgroundColor: '#13161D',
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: C.border,
-        paddingHorizontal: 18,
-        paddingTop: 14,
-        paddingBottom: 12,
-        marginBottom: 10,
-        position: 'relative',
-        overflow: 'hidden',
-    },
-    wrapFocused: {
-        borderColor: C.primaryBorder,
-        backgroundColor: C.primaryGlow,
-    },
-    wrapMulti: {
-        paddingBottom: 14,
-    },
-    label: {
-        fontSize: 10,
-        fontWeight: '700',
-        color: C.textSub,
-        letterSpacing: 1.2,
-        textTransform: 'uppercase',
-        marginBottom: 6,
-    },
-    labelFocused: {
-        color: C.primaryText,
-    },
-    input: {
-        color: C.text,
-        fontSize: 15,
-        fontWeight: '400',
-        padding: 0,
-        letterSpacing: 0.2,
-    },
-    inputMulti: {
-        minHeight: 60,
-        lineHeight: 22,
-    },
-    activeLine: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 1.5,
-        backgroundColor: C.primary,
-    },
-});
+// Cleaned up
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-    safe: {
-        flex: 1,
-        backgroundColor: C.bg,
-    },
+const getStyles = (C: any) => {
+    const statStyles = StyleSheet.create({
+        card: {
+            flex: 1,
+            backgroundColor: C.surfaceHigh,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: C.border,
+            paddingVertical: 16,
+            alignItems: 'center',
+        },
+        cardHighlight: {
+            borderColor: C.primaryBorder,
+            backgroundColor: C.primaryGlow,
+        },
+        value: {
+            color: C.text,
+            fontSize: 16,
+            fontWeight: '700',
+            letterSpacing: -0.3,
+            marginBottom: 4,
+        },
+        label: {
+            color: C.textSub,
+            fontSize: 11,
+            fontWeight: '600',
+            letterSpacing: 0.5,
+            textTransform: 'uppercase',
+        },
+    });
+
+    const menuStyles = StyleSheet.create({
+        item: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            paddingVertical: 14,
+            paddingHorizontal: 16,
+            backgroundColor: C.surfaceHigh,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: C.border,
+            marginBottom: 8,
+        },
+        iconBox: {
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            backgroundColor: C.primaryGlow,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        label: {
+            color: C.text,
+            fontSize: 14,
+            fontWeight: '500',
+        },
+    });
+
+    const mfStyles = StyleSheet.create({
+        wrap: {
+            backgroundColor: '#13161D',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: C.border,
+            paddingHorizontal: 18,
+            paddingTop: 14,
+            paddingBottom: 12,
+            marginBottom: 10,
+            position: 'relative',
+            overflow: 'hidden',
+        },
+        wrapFocused: {
+            borderColor: C.primaryBorder,
+            backgroundColor: C.primaryGlow,
+        },
+        wrapMulti: {
+            paddingBottom: 14,
+        },
+        label: {
+            fontSize: 10,
+            fontWeight: '700',
+            color: C.textSub,
+            letterSpacing: 1.2,
+            textTransform: 'uppercase',
+            marginBottom: 6,
+        },
+        labelFocused: {
+            color: C.primaryText,
+        },
+        input: {
+            color: C.text,
+            fontSize: 15,
+            fontWeight: '400',
+            padding: 0,
+            letterSpacing: 0.2,
+        },
+        inputMulti: {
+            minHeight: 60,
+            lineHeight: 22,
+        },
+        activeLine: {
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 1.5,
+            backgroundColor: C.primary,
+        },
+    });
+
+    const styles = StyleSheet.create({
+        safe: {
+            flex: 1,
+            backgroundColor: C.bg,
+        },
     loading: {
         flex: 1,
         backgroundColor: C.bg,
@@ -673,3 +697,6 @@ const styles = StyleSheet.create({
         letterSpacing: 0.1,
     },
 });
+
+    return { styles, statStyles, menuStyles, mfStyles };
+};

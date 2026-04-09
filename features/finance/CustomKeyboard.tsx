@@ -104,22 +104,22 @@ export default function CustomKeyboard({
 
 const styles = StyleSheet.create({
     container: {
-        gap: 8,
+        gap: 6,
         paddingHorizontal: 16,
-        paddingBottom: 8,
-        paddingTop: 16,
+        paddingBottom: 6,
+        paddingTop: 12,
         borderTopWidth: 1,
         borderTopColor: '#2C2C3E',
-        marginTop: 10,
+        marginTop: 8,
     },
     row: {
         flexDirection: 'row',
-        gap: 8,
+        gap: 6,
     },
     key: {
         flex: 1,
-        height: 54,
-        borderRadius: 14,
+        height: 44,
+        borderRadius: 12,
         backgroundColor: '#22222E',
         alignItems: 'center',
         justifyContent: 'center',
@@ -134,13 +134,13 @@ const styles = StyleSheet.create({
         backgroundColor: '#1E1E2A',
     },
     keyText: {
-        fontSize: 22,
+        fontSize: 18,
         fontWeight: '500',
         color: '#F1F1F5',
         letterSpacing: 0.5,
     },
     keyTextBackspace: {
-        fontSize: 20,
+        fontSize: 17,
         color: '#F87171',
     },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
     View,
     Text,
@@ -9,6 +9,8 @@ import {
     ActivityIndicator,
     Alert,
     FlatList,
+    LayoutAnimation,
+    UIManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +27,8 @@ import SummaryCard from '../../../components/finance/SummaryCard';
 import TransactionItem from '../../../components/finance/TransactionItem';
 import { FinanceCharts } from '../../../components/finance/FinanceCharts';
 import { BudgetCard } from '../../../components/finance/BudgetCard';
+import { BillTrackerCard } from '../../../components/finance/BillTrackerCard';
+import BillManagerModal from '../../../components/finance/BillManagerModal';
 import { generateFinancePDF } from '../../../features/finance/FinanceExport';
 import { Modal, TextInput } from 'react-native';
 
@@ -53,14 +57,24 @@ export default function FinanceScreen() {
         addTransaction, 
         addCategory,
         setBudget,
-        getBudgetForCategory
+        getBudgetForCategory,
+        savingsTarget,
     } = useFinanceStore();
 
     const [sheetVisible, setSheetVisible] = useState(false);
     const [budgetModalVisible, setBudgetModalVisible] = useState(false);
+    const [billModalVisible, setBillModalVisible] = useState(false);
     const [selectedCatForBudget, setSelectedCatForBudget] = useState<string | null>(null);
     const [budgetInput, setBudgetInput] = useState('');
     const [ocrResult, setOcrResult] = useState<ScanResult | null>(null);
+    const [budgetExpanded, setBudgetExpanded] = useState(false);
+
+    // Bug #11 fix: enable LayoutAnimation once on mount, not on every render
+    useEffect(() => {
+        if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+            UIManager.setLayoutAnimationEnabledExperimental(true);
+        }
+    }, []);
 
     // ─── Optimized Derived State ───
     const { total, incomeRatio } = useMemo(() => {
@@ -164,6 +178,15 @@ export default function FinanceScreen() {
                 )}
             </View>
 
+            {/* ── Bill Tracker Section ── */}
+            <BillTrackerCard 
+                amount={savingsTarget.amount}
+                frequency={savingsTarget.frequency}
+                unpaidCount={savingsTarget.unpaidCount}
+                totalUnpaid={savingsTarget.totalUnpaid}
+                onPress={() => setBillModalVisible(true)}
+            />
+
             {/* ── AI Advisor Section ── */}
             {insights && insights.length > 0 && (
                 <View style={[styles.aiCard, { backgroundColor: theme.colors.card, borderColor: FINANCE_PRIMARY + '30', borderLeftColor: FINANCE_PRIMARY }]}>
@@ -209,38 +232,99 @@ export default function FinanceScreen() {
                 />
             )}
 
-            {/* ── Section Header ── */}
-            <View style={styles.sectionRow}>
-                <View style={styles.sectionLeft}>
-                    <View style={[styles.sectionDot, { backgroundColor: FINANCE_PRIMARY }]} />
-                    <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Budgeting</Text>
-                </View>
-            </View>
-
-            <View style={{ paddingHorizontal: 16 }}>
-                {expenseCategories.map(cat => {
-                    const budget = getBudgetForCategory(cat.id);
-                    const spending = transactions
+            {/* ── Budgeting Section ── */}
+            {(() => {
+                const activeBudgets = budgets.length;
+                const totalBudgeted = budgets.reduce((s, b) => s + b.amount, 0);
+                const totalSpent = expenseCategories.reduce((s, cat) => {
+                    return s + transactions
                         .filter(t => t.type === 'expense' && t.categoryId === cat.id)
                         .reduce((sum, t) => sum + t.amount, 0);
+                }, 0);
+                const overallPercent = totalBudgeted > 0 ? Math.min(totalSpent / totalBudgeted, 1) : 0;
+                let barColor = theme.colors.success;
+                if (overallPercent >= 1) barColor = theme.colors.danger;
+                else if (overallPercent >= 0.8) barColor = '#F59E0B';
 
-                    return (
-                        <BudgetCard
-                            key={cat.id}
-                            categoryLabel={cat.label}
-                            categoryIcon={cat.icon}
-                            categoryColor={cat.color}
-                            spending={spending}
-                            budgetAmount={budget?.amount || 0}
-                            onSetBudget={() => {
-                                setSelectedCatForBudget(cat.id);
-                                setBudgetInput(budget?.amount?.toString() || '');
-                                setBudgetModalVisible(true);
+                return (
+                    <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+                        {/* ── Budget Toggle Button ── */}
+                        <TouchableOpacity
+                            activeOpacity={0.82}
+                            onPress={() => {
+                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                setBudgetExpanded(p => !p);
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                             }}
-                        />
-                    );
-                })}
-            </View>
+                            style={[
+                                styles.budgetToggleCard,
+                                { backgroundColor: theme.colors.card, borderColor: budgetExpanded ? FINANCE_PRIMARY + '50' : theme.colors.border }
+                            ]}
+                        >
+                            {/* Left: icon + label */}
+                            <View style={styles.budgetToggleLeft}>
+                                <View style={[styles.budgetToggleIcon, { backgroundColor: FINANCE_PRIMARY + '18' }]}>
+                                    <Ionicons name="wallet-outline" size={16} color={FINANCE_PRIMARY} />
+                                </View>
+                                <View>
+                                    <Text style={[styles.budgetToggleLabel, { color: theme.colors.textPrimary }]}>
+                                        Budgeting
+                                    </Text>
+                                    <Text style={[styles.budgetToggleSub, { color: theme.colors.textMuted }]}>
+                                        {activeBudgets > 0
+                                            ? `${activeBudgets} budget aktif · ${Math.round(overallPercent * 100)}% terpakai`
+                                            : 'Belum ada budget diatur'}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            {/* Right: mini progress + chevron */}
+                            <View style={styles.budgetToggleRight}>
+                                {totalBudgeted > 0 && (
+                                    <View style={[styles.budgetMiniBar, { backgroundColor: theme.colors.background }]}>
+                                        <View style={[
+                                            styles.budgetMiniBarFill,
+                                            { width: `${overallPercent * 100}%`, backgroundColor: barColor }
+                                        ]} />
+                                    </View>
+                                )}
+                                <Ionicons
+                                    name={budgetExpanded ? 'chevron-up' : 'chevron-down'}
+                                    size={16}
+                                    color={theme.colors.textMuted}
+                                />
+                            </View>
+                        </TouchableOpacity>
+
+                        {/* ── Expanded Budget Cards ── */}
+                        {budgetExpanded && (
+                            <View style={{ marginTop: 10 }}>
+                                {expenseCategories.map(cat => {
+                                    const budget = getBudgetForCategory(cat.id);
+                                    const spending = transactions
+                                        .filter(t => t.type === 'expense' && t.categoryId === cat.id)
+                                        .reduce((sum, t) => sum + t.amount, 0);
+                                    return (
+                                        <BudgetCard
+                                            key={cat.id}
+                                            categoryLabel={cat.label}
+                                            categoryIcon={cat.icon}
+                                            categoryColor={cat.color}
+                                            spending={spending}
+                                            budgetAmount={budget?.amount || 0}
+                                            onSetBudget={() => {
+                                                setSelectedCatForBudget(cat.id);
+                                                setBudgetInput(budget?.amount?.toString() || '');
+                                                setBudgetModalVisible(true);
+                                            }}
+                                        />
+                                    );
+                                })}
+                            </View>
+                        )}
+                    </View>
+                );
+            })()}
 
             {/* ── Section Header ── */}
             <View style={styles.sectionRow}>
@@ -367,6 +451,11 @@ export default function FinanceScreen() {
                 incomeCategories={incomeCategories}
                 onAddCategory={addCategory}
                 initialOCRResult={ocrResult}
+            />
+
+            <BillManagerModal 
+                visible={billModalVisible}
+                onClose={() => setBillModalVisible(false)}
             />
 
             {/* ── Budget Modal ── */}
@@ -645,5 +734,53 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+
+    // Budget Toggle
+    budgetToggleCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 14,
+        borderRadius: 16,
+        borderWidth: 1,
+    },
+    budgetToggleLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        flex: 1,
+    },
+    budgetToggleIcon: {
+        width: 34,
+        height: 34,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    budgetToggleLabel: {
+        fontSize: 14,
+        fontWeight: '700',
+        letterSpacing: -0.2,
+    },
+    budgetToggleSub: {
+        fontSize: 11,
+        fontWeight: '500',
+        marginTop: 1,
+    },
+    budgetToggleRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    budgetMiniBar: {
+        width: 60,
+        height: 5,
+        borderRadius: 3,
+        overflow: 'hidden',
+    },
+    budgetMiniBarFill: {
+        height: '100%',
+        borderRadius: 3,
     },
 });

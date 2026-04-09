@@ -1,8 +1,10 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo, createContext, useContext, createElement, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
 import { checkBudgetThresholds, sendBudgetNotification } from '../../services/financeService';
 import { getFinancialInsights, Insight } from '../../services/aiService';
+import { useLoading } from '../../src/context/LoadingContext';
+import TakslyLoadingScreen from '../../components/common/TakslyLoadingScreen';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,6 +34,16 @@ export interface Budget {
     year: number;
 }
 
+export interface Subscription {
+    id: string;
+    name: string;
+    amount: number;
+    dueDay: number;
+    categoryId?: string;
+    emoji: string;
+    lastPaidDate?: Date | null;
+}
+
 // ─── Default Categories ───────────────────────────────────────────────────────
 
 export const EXPENSE_CATEGORIES: Category[] = [
@@ -52,24 +64,29 @@ export const INCOME_CATEGORIES: Category[] = [
     { id: 'bisnis', label: 'Bisnis', icon: 'storefront-outline', color: '#6EE7B7' },
     { id: 'investasi', label: 'Investasi', icon: 'trending-up-outline', color: '#A7F3D0' },
     { id: 'hadiah', label: 'Hadiah', icon: 'gift-outline', color: '#FCD34D' },
-    { id: 'lainnya', label: 'Lainnya', icon: 'cash-outline', color: '#6B7280' },
+    { id: 'income_other', label: 'Lainnya', icon: 'cash-outline', color: '#6B7280' },
 ];
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
-export function useFinanceStore() {
+function useFinanceStoreInternal() {
+    const { setGlobalLoading } = useLoading();
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [budgets, setBudgets] = useState<Budget[]>([]);
+    const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
     const [insights, setInsights] = useState<Insight[]>([]);
     const [expenseCategories, setExpenseCategories] = useState<Category[]>(EXPENSE_CATEGORIES);
     const [incomeCategories, setIncomeCategories] = useState<Category[]>(INCOME_CATEGORIES);
     const [userId, setUserId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [savingsFrequency, setSavingsFrequency] = useState<'daily' | 'weekly'>('daily');
 
     // Fetch transactions
     const fetchTransactions = useCallback(async () => {
-        if (!userId) return;
-        setIsLoading(true);
+        if (!userId) {
+            setIsLoading(false);
+            return;
+        }
         const { data, error } = await supabase
             .from('ts_finance')
             .select('*')
@@ -78,7 +95,7 @@ export function useFinanceStore() {
             .order('finance_date', { ascending: false });
 
         if (error) {
-            console.error("Error fetching transactions:", error);
+            console.error("[useFinanceStore] fetchTransactions error:", error);
         } else if (data) {
             const mapped = data.map(row => ({
                 id: row.id,
@@ -116,6 +133,29 @@ export function useFinanceStore() {
         }
     }, [userId]);
 
+    const fetchSubscriptions = useCallback(async () => {
+        if (!userId) return;
+        const { data, error } = await supabase
+            .from('ts_subscriptions')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('status', 'Active');
+
+        if (error) {
+            console.error("Error fetching subscriptions:", error);
+        } else if (data) {
+            setSubscriptions(data.map(row => ({
+                id: row.id,
+                name: row.name,
+                amount: Number(row.amount),
+                dueDay: row.due_day,
+                categoryId: row.category_id,
+                emoji: row.emoji,
+                lastPaidDate: row.last_paid_date ? new Date(row.last_paid_date) : null,
+            })));
+        }
+    }, [userId]);
+
     const fetchCustomCategories = useCallback(async () => {
         if (!userId) return;
         const { data, error } = await supabase
@@ -126,6 +166,9 @@ export function useFinanceStore() {
         if (error) {
             console.error("Error fetching custom categories:", error);
         } else if (data) {
+            const val = await AsyncStorage.getItem(`deleted_cats_${userId}`);
+            const deletedIds = val ? JSON.parse(val) : [];
+
             const expense = data.filter(c => c.type === 'expense').map(c => ({
                 id: c.id,
                 label: c.label,
@@ -138,8 +181,12 @@ export function useFinanceStore() {
                 icon: c.icon,
                 color: c.color
             }));
-            setExpenseCategories([...EXPENSE_CATEGORIES, ...expense]);
-            setIncomeCategories([...INCOME_CATEGORIES, ...income]);
+
+            const activeExp = EXPENSE_CATEGORIES.filter(c => !deletedIds.includes(c.id));
+            const activeInc = INCOME_CATEGORIES.filter(c => !deletedIds.includes(c.id));
+
+            setExpenseCategories([...activeExp, ...expense]);
+            setIncomeCategories([...activeInc, ...income]);
         }
     }, [userId]);
 
@@ -150,9 +197,12 @@ export function useFinanceStore() {
                 const { data: { session } } = await supabase.auth.getSession();
                 if (session?.user) {
                     setUserId(session.user.id);
+                } else {
+                    setIsLoading(false);
                 }
             } catch (error) {
-                console.error("Error loading user from Supabase Auth:", error);
+                console.error("[useFinanceStore] loadUser error:", error);
+                setIsLoading(false);
             }
         };
         loadUser();
@@ -161,11 +211,30 @@ export function useFinanceStore() {
     // Initial fetch on userId change
     useEffect(() => {
         if (userId) {
-            fetchTransactions();
-            fetchBudgets();
-            fetchCustomCategories();
+            const initialFetch = async () => {
+                setGlobalLoading(true);
+                await Promise.all([
+                    fetchTransactions(),
+                    fetchBudgets(),
+                    fetchSubscriptions(),
+                    fetchCustomCategories(),
+                    AsyncStorage.getItem(`savings_freq_${userId}`).then(val => {
+                        if (val === 'daily' || val === 'weekly') setSavingsFrequency(val);
+                    })
+                ]);
+                setGlobalLoading(false);
+            };
+            initialFetch();
         }
-    }, [userId, fetchTransactions, fetchBudgets, fetchCustomCategories]);
+    }, [userId, fetchTransactions, fetchBudgets, fetchSubscriptions, fetchCustomCategories, setGlobalLoading]);
+
+    // Handle frequency change persistence
+    const updateSavingsFrequency = useCallback((freq: 'daily' | 'weekly') => {
+        setSavingsFrequency(freq);
+        if (userId) {
+            AsyncStorage.setItem(`savings_freq_${userId}`, freq);
+        }
+    }, [userId]);
 
     // Realtime subscription for transactions
     useEffect(() => {
@@ -251,11 +320,28 @@ export function useFinanceStore() {
             )
             .subscribe();
 
+        const subChannel = supabase
+            .channel('subscriptions-realtime')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'ts_subscriptions',
+                    filter: `user_id=eq.${userId}`,
+                },
+                () => {
+                    fetchSubscriptions();
+                }
+            )
+            .subscribe();
+
         return () => {
             supabase.removeChannel(channel);
             supabase.removeChannel(catChannel);
+            supabase.removeChannel(subChannel);
         };
-    }, [userId, fetchBudgets, fetchCustomCategories]);
+    }, [userId, fetchBudgets, fetchCustomCategories, fetchSubscriptions]);
 
     const getCategoryById = useCallback((categoryId: string): Category | undefined => {
         return (
@@ -272,93 +358,139 @@ export function useFinanceStore() {
         note: string,
     ) => {
         if (!userId) return;
+        setGlobalLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('ts_finance')
+                .insert([{
+                    user_id: userId,
+                    type: type,
+                    category: categoryId,
+                    amount: amount,
+                    note: note,
+                    finance_date: new Date().toISOString().split('T')[0],
+                }])
+                .select()
+                .single();
 
-        const { data, error } = await supabase
-            .from('ts_finance')
-            .insert([{
-                user_id: userId,
-                type: type,
-                category: categoryId,
-                amount: amount,
-                note: note,
-                finance_date: new Date().toISOString().split('T')[0],
-            }])
-            .select()
-            .single();
+            if (data) {
+                const tx: Transaction = {
+                    id: data.id,
+                    type: data.type,
+                    categoryId: data.category,
+                    amount: Number(data.amount),
+                    note: data.note || '',
+                    createdAt: new Date(data.created_date),
+                };
+                setTransactions(prev => [tx, ...prev]);
 
-        if (error) {
+                const cat = getCategoryById(tx.categoryId);
+                const budget = budgets.find(b => b.categoryId === tx.categoryId);
+                if (tx.type === 'expense' && budget && cat) {
+                    const spending = transactions
+                        .filter(t => t.type === 'expense' && t.categoryId === tx.categoryId)
+                        .reduce((sum, t) => sum + t.amount, 0) + tx.amount;
+                    
+                    const notif = checkBudgetThresholds(spending, budget.amount, cat.label);
+                    if (notif) {
+                        await sendBudgetNotification(notif.title, notif.body);
+                    }
+                }
+                return tx.id;
+            }
+        } catch (error) {
             console.error("Error inserting transaction:", error);
             alert("Gagal menyimpan transaksi");
-            return;
+        } finally {
+            setGlobalLoading(false);
         }
-
-        if (data) {
-            const tx: Transaction = {
-                id: data.id,
-                type: data.type,
-                categoryId: data.category,
-                amount: Number(data.amount),
-                note: data.note || '',
-                createdAt: new Date(data.created_date),
-            };
-            setTransactions(prev => [tx, ...prev]);
-
-            // Check Budget Notifications
-            const cat = getCategoryById(tx.categoryId);
-            const budget = budgets.find(b => b.categoryId === tx.categoryId);
-            if (tx.type === 'expense' && budget && cat) {
-                const spending = transactions
-                    .filter(t => t.type === 'expense' && t.categoryId === tx.categoryId)
-                    .reduce((sum, t) => sum + t.amount, 0) + tx.amount;
-                
-                const notif = checkBudgetThresholds(spending, budget.amount, cat.label);
-                if (notif) {
-                    await sendBudgetNotification(notif.title, notif.body);
-                }
-            }
-        }
-    }, [userId, getCategoryById, budgets, transactions]);
+    }, [userId, getCategoryById, budgets, transactions, setGlobalLoading]);
 
     const deleteTransaction = useCallback(async (id: string) => {
-        const { error } = await supabase
-            .from('ts_finance')
-            .update({ 
-                deleted_date: new Date().toISOString(),
-                status: 'Inactive'
-            })
-            .eq('id', id);
+        setGlobalLoading(true);
+        try {
+            const { error } = await supabase
+                .from('ts_finance')
+                .update({ 
+                    deleted_date: new Date().toISOString(),
+                    status: 'Inactive'
+                })
+                .eq('id', id);
 
-        if (error) {
+            if (error) throw error;
+            setTransactions(prev => prev.filter(t => t.id !== id));
+        } catch (error) {
             console.error("Error soft-deleting transaction:", error);
             alert("Gagal menghapus transaksi");
-            return;
+        } finally {
+            setGlobalLoading(false);
         }
-
-        setTransactions(prev => prev.filter(t => t.id !== id));
-    }, []);
+    }, [setGlobalLoading]);
 
     const addCategory = useCallback(async (type: TransactionType, category: Omit<Category, 'id'>) => {
         if (!userId) return;
-        
-        const { data, error } = await supabase
-            .from('ts_categories')
-            .insert([{
-                user_id: userId,
-                type: type,
-                label: category.label,
-                icon: category.icon,
-                color: category.color
-            }])
-            .select()
-            .single();
+        setGlobalLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('ts_categories')
+                .insert([{
+                    user_id: userId,
+                    type: type,
+                    label: category.label,
+                    icon: category.icon,
+                    color: category.color
+                }])
+                .select()
+                .single();
 
-        if (error) {
+            if (error) throw error;
+            fetchCustomCategories();
+        } catch (error) {
             console.error("Error adding category:", error);
             alert("Gagal menyimpan kategori");
-        } else if (data) {
-            fetchCustomCategories();
+        } finally {
+            setGlobalLoading(false);
         }
-    }, [userId, fetchCustomCategories]);
+    }, [userId, fetchCustomCategories, setGlobalLoading]);
+
+    const deleteCategory = useCallback(async (id: string, type: TransactionType) => {
+        if (!userId) return;
+        setGlobalLoading(true);
+        try {
+            if (!id.includes('-')) {
+                const val = await AsyncStorage.getItem(`deleted_cats_${userId}`);
+                const deletedIds = val ? JSON.parse(val) : [];
+                if (!deletedIds.includes(id)) {
+                    deletedIds.push(id);
+                    await AsyncStorage.setItem(`deleted_cats_${userId}`, JSON.stringify(deletedIds));
+                }
+                if (type === 'expense') {
+                    setExpenseCategories(prev => prev.filter(c => c.id !== id));
+                } else {
+                    setIncomeCategories(prev => prev.filter(c => c.id !== id));
+                }
+                return;
+            }
+
+            const { error } = await supabase
+                .from('ts_categories')
+                .delete()
+                .eq('id', id)
+                .eq('user_id', userId);
+
+            if (error) throw error;
+            if (type === 'expense') {
+                setExpenseCategories(prev => prev.filter(c => c.id !== id));
+            } else {
+                setIncomeCategories(prev => prev.filter(c => c.id !== id));
+            }
+        } catch (error) {
+            console.error("Error deleting category:", error);
+            alert("Gagal menghapus kategori");
+        } finally {
+            setGlobalLoading(false);
+        }
+    }, [userId, setGlobalLoading]);
 
     // AI Insights update
     useEffect(() => {
@@ -372,80 +504,162 @@ export function useFinanceStore() {
     // Budget actions
     const setBudget = useCallback(async (categoryId: string, amount: number) => {
         if (!userId) return;
-        const now = new Date();
-        const month = now.getMonth() + 1;
-        const year = now.getFullYear();
+        setGlobalLoading(true);
+        try {
+            const now = new Date();
+            const month = now.getMonth() + 1;
+            const year = now.getFullYear();
 
-        // Check if exists
-        const { data: existing } = await supabase
-            .from('ts_budget')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('category_id', categoryId)
-            .eq('month', month)
-            .eq('year', year)
-            .maybeSingle();
+            const { data: existing } = await supabase
+                .from('ts_budget')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('category_id', categoryId)
+                .eq('month', month)
+                .eq('year', year)
+                .maybeSingle();
 
-        let error;
-        if (existing) {
-            const { error: err } = await supabase
-                .from('ts_budget')
-                .update({ amount })
-                .eq('id', existing.id);
-            error = err;
-        } else {
-            const { error: err } = await supabase
-                .from('ts_budget')
-                .insert([{
+            if (existing) {
+                await supabase.from('ts_budget').update({ amount }).eq('id', existing.id);
+            } else {
+                await supabase.from('ts_budget').insert([{
                     user_id: userId,
                     category_id: categoryId,
-                    amount,
-                    month,
-                    year
+                    amount, month, year
                 }]);
-            error = err;
-        }
-
-        if (error) {
+            }
+            fetchBudgets();
+        } catch (error) {
             console.error("Error setting budget:", error);
             alert("Gagal menyimpan budget");
-        } else {
-            fetchBudgets();
+        } finally {
+            setGlobalLoading(false);
         }
-    }, [userId, fetchBudgets]);
+    }, [userId, fetchBudgets, setGlobalLoading]);
 
     const getBudgetForCategory = useCallback((categoryId: string) => {
         return budgets.find(b => b.categoryId === categoryId);
     }, [budgets]);
 
+    const addSubscription = useCallback(async (sub: Omit<Subscription, 'id'>) => {
+        if (!userId) return;
+        setGlobalLoading(true);
+        try {
+            const { error } = await supabase
+                .from('ts_subscriptions')
+                .insert([{
+                    user_id: userId,
+                    name: sub.name,
+                    amount: sub.amount,
+                    due_day: sub.dueDay,
+                    category_id: sub.categoryId,
+                    emoji: sub.emoji,
+                }]);
+            if (error) throw error;
+            fetchSubscriptions();
+        } catch (error) {
+            console.error("Error adding subscription:", error);
+            alert("Gagal menambah tagihan");
+        } finally {
+            setGlobalLoading(false);
+        }
+    }, [userId, fetchSubscriptions, setGlobalLoading]);
+
+    const deleteSubscription = useCallback(async (id: string) => {
+        setGlobalLoading(true);
+        try {
+            const { error } = await supabase
+                .from('ts_subscriptions')
+                .update({ status: 'Inactive' })
+                .eq('id', id);
+            if (error) throw error;
+            setSubscriptions(prev => prev.filter(s => s.id !== id));
+        } catch (error) {
+            console.error("Error deleting subscription:", error);
+            alert("Gagal menghapus tagihan");
+        } finally {
+            setGlobalLoading(false);
+        }
+    }, [setGlobalLoading]);
+
+    const markSubAsPaid = useCallback(async (id: string) => {
+        const sub = subscriptions.find(s => s.id === id);
+        if (!sub || !userId) return;
+        setGlobalLoading(true);
+        try {
+            const { error } = await supabase
+                .from('ts_subscriptions')
+                .update({ last_paid_date: new Date().toISOString() })
+                .eq('id', id);
+
+            if (error) throw error;
+            await addTransaction('expense', sub.categoryId || 'tagihan', sub.amount, `Bayar Tagihan: ${sub.name}`);
+            fetchSubscriptions();
+        } catch (error) {
+            console.error("Error marking sub as paid:", error);
+            alert("Gagal update status bayar");
+        } finally {
+            setGlobalLoading(false);
+        }
+    }, [subscriptions, userId, addTransaction, fetchSubscriptions, setGlobalLoading]);
+
     // Derived stats
-    const totalIncome = transactions
-        .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + t.amount, 0);
-
-    const totalExpense = transactions
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + t.amount, 0);
-
+    const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
     const balance = totalIncome - totalExpense;
 
+    const savingsTarget = useMemo(() => {
+        try {
+            const now = new Date();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+            const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+            const today = now.getDate();
+            const remainingDays = Math.max(1, daysInMonth - today + 1);
+
+            const unpaidSubs = subscriptions.filter(s => {
+                if (!s.lastPaidDate) return true;
+                const lp = new Date(s.lastPaidDate);
+                return lp.getMonth() !== currentMonth || lp.getFullYear() !== currentYear;
+            });
+
+            const totalUnpaid = unpaidSubs.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+            const weeksRemaining = Math.max(1, Math.ceil(remainingDays / 7));
+            const calculatedTarget = savingsFrequency === 'daily' ? totalUnpaid / remainingDays : totalUnpaid / weeksRemaining;
+
+            return {
+                totalUnpaid,
+                amount: calculatedTarget,
+                frequency: savingsFrequency,
+                unpaidCount: unpaidSubs.length,
+                unpaidList: unpaidSubs,
+            };
+        } catch (error) {
+            return { totalUnpaid: 0, amount: 0, frequency: savingsFrequency, unpaidCount: 0, unpaidList: [] };
+        }
+    }, [subscriptions, savingsFrequency]);
+
     return {
-        transactions,
-        budgets,
-        insights,
-        expenseCategories,
-        incomeCategories,
-        totalIncome,
-        totalExpense,
-        balance,
-        isLoading,
-        addTransaction,
-        deleteTransaction,
-        addCategory,
-        getCategoryById,
-        refreshTransactions: fetchTransactions,
-        fetchBudgets,
-        setBudget,
-        getBudgetForCategory,
+        transactions, budgets, insights, expenseCategories, incomeCategories, totalIncome, totalExpense, balance, isLoading, subscriptions, savingsTarget,
+        addTransaction, deleteTransaction, addCategory, deleteCategory, getCategoryById,
+        refreshTransactions: fetchTransactions, fetchBudgets, setBudget, getBudgetForCategory,
+        addSubscription, deleteSubscription, markSubAsPaid, savingsFrequency, updateSavingsFrequency,
     };
+}
+
+// ─── Shared Context ───────────────────────────────────────────────────────────
+
+type FinanceStoreValue = ReturnType<typeof useFinanceStoreInternal>;
+
+const FinanceStoreContext = createContext<FinanceStoreValue | null>(null);
+
+export function FinanceStoreProvider({ children }: { children: ReactNode }) {
+    const store = useFinanceStoreInternal();
+    return createElement(FinanceStoreContext.Provider, { value: store }, children);
+}
+
+export function useFinanceStore(): FinanceStoreValue {
+    const ctx = useContext(FinanceStoreContext);
+    if (!ctx) throw new Error('[Taksly] useFinanceStore must be used inside <FinanceStoreProvider>');
+    return ctx;
 }

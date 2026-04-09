@@ -60,7 +60,7 @@ const smartCategorize = (note: string): string | null => {
     if (/makan|resto|food|warung|kopi/i.test(n)) return 'food';
     if (/gojek|grab|transport|bensin|parkir/i.test(n)) return 'transport';
     if (/shopee|tokped|belanja|mall|pasar/i.test(n)) return 'belanja';
-    if (/netlfix|spotify|game|bioskop/i.test(n)) return 'hiburan';
+    if (/netflix|spotify|game|bioskop/i.test(n)) return 'hiburan';
     if (/obat|rs|klinik|apotek/i.test(n)) return 'kesehatan';
     if (/listrik|air|wifi|pln/i.test(n)) return 'tagihan';
     if (/buku|kursus|sekolah/i.test(n)) return 'pendidikan';
@@ -240,6 +240,7 @@ export default function TransactionSheet({
                     { 
                         text: "Import", 
                         onPress: () => {
+                            let importCount = 0;
                             data.forEach((row: any) => {
                                 // Basic mapping for SeaBank/generic
                                 const amountVal = Number(row.amount || row.Amount || row.jumlah || 0);
@@ -248,9 +249,10 @@ export default function TransactionSheet({
                                 
                                 if (amountVal > 0) {
                                     onSubmit('expense', cat, amountVal, desc);
+                                    importCount++;  // Bug #15 fix: count only valid rows
                                 }
                             });
-                            Alert.alert("Sukses", `${data.length} Transaksi berhasil diimport`);
+                            Alert.alert("Sukses", `${importCount} transaksi berhasil diimport`);
                             onClose();
                         }
                     }

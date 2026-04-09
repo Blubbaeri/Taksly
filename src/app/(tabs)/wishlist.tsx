@@ -17,6 +17,7 @@ import { supabase } from '../../../lib/supabase';
 import { useTheme } from '../../../theme/ThemeContext';
 import { useFinanceStore } from '../../../features/finance/useFinanceStore';
 import { scheduleWishlistReminder } from '../../../lib/notification';
+import { useLoading } from '../../context/LoadingContext';
 
 // Components
 import { SummaryBanner } from '../../../components/wishlist/SummaryBanner';
@@ -38,7 +39,8 @@ import {
 
 export default function Wishlist() {
     const theme = useTheme();
-    const { addTransaction, totalIncome, totalExpense } = useFinanceStore();
+    const { setGlobalLoading } = useLoading();
+    const { addTransaction, deleteTransaction, totalIncome, totalExpense } = useFinanceStore();
     const { formatIDR } = useWishlistUtils();
 
     // ── State ──
@@ -52,16 +54,17 @@ export default function Wishlist() {
     const [confettiFor, setConfettiFor] = useState<string | null>(null);
     const [loadingId, setLoadingId] = useState<string | null>(null);
     const [history, setHistory] = useState<Record<string, any[]>>({});
-    const [lastAction, setLastAction] = useState<{ id: string; amount: number; historyId: string } | null>(null);
+    const [lastAction, setLastAction] = useState<{ id: string; amount: number; historyId: string; transactionId?: string } | null>(null);
 
     const { itemInsights, globalInsights } = useWishlistInsights(wishlist);
 
     useEffect(() => {
-        fetchWishlist();
+        fetchWishlist(true);
     }, []);
 
-    const fetchWishlist = async () => {
+    const fetchWishlist = async (withGlobal = false) => {
         try {
+            if (withGlobal) setGlobalLoading(true);
             setLoading(true);
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
@@ -91,10 +94,10 @@ export default function Wishlist() {
             await fetchHistory();
         } catch (error: any) {
             console.error('Fetch wishlist error:', error.message);
-            Alert.alert('Error', 'Failed to fetch wishlist');
         } finally {
             setLoading(false);
             setRefreshing(false);
+            if (withGlobal) setGlobalLoading(false);
         }
     };
 
@@ -149,17 +152,17 @@ export default function Wishlist() {
         const item = wishlist.find(i => i.id === id);
         if (!item) return;
 
+        setGlobalLoading(true);
         const nextSaved = Math.min(item.targetPrice, item.currentSaved + amount);
         const originalWishlist = [...wishlist];
+        const willComplete = nextSaved >= item.targetPrice && item.currentSaved < item.targetPrice;
 
-        setWishlist(prev => prev.map(i => {
-            if (i.id !== id) return i;
-            if (nextSaved >= i.targetPrice && i.currentSaved < i.targetPrice) {
-                setConfettiFor(id);
-                setTimeout(() => setConfettiFor(null), 3000);
-            }
-            return { ...i, currentSaved: nextSaved };
-        }));
+        setWishlist(prev => prev.map(i => i.id !== id ? i : { ...i, currentSaved: nextSaved }));
+
+        if (willComplete) {
+            setConfettiFor(id);
+            setTimeout(() => setConfettiFor(null), 3000);
+        }
 
         setLoadingId(id);
         try {
@@ -173,7 +176,8 @@ export default function Wishlist() {
 
             if (error) throw error;
 
-            // Audit history
+            const transactionId = await addTransaction('expense', 'wishlist', amount, `Nabung buat ${item.name} ${item.emoji}`);
+
             const { data: hData, error: hError } = await supabase
                 .from('ts_wishlist_history')
                 .insert([{
@@ -188,19 +192,17 @@ export default function Wishlist() {
                     ...prev,
                     [id]: [hData[0], ...(prev[id] || [])]
                 }));
-                // Set for Undo (5 second window)
-                setLastAction({ id, amount, historyId: hData[0].id });
+                setLastAction({ id, amount, historyId: hData[0].id, transactionId });
                 setTimeout(() => setLastAction(null), 8000);
             }
-
-            await addTransaction('expense', 'wishlist', amount, `Nabung buat ${item.name} ${item.emoji}`);
         } catch (err: any) {
             setWishlist(originalWishlist);
             Alert.alert('Failed to save', err.message);
         } finally {
             setLoadingId(null);
+            setGlobalLoading(false);
         }
-    }, [wishlist, addTransaction, history]);
+    }, [wishlist, addTransaction, history, setGlobalLoading]);
 
     const handleDeleteItem = useCallback(async (id: string) => {
         Alert.alert('Delete Goal', 'Are you sure you want to delete this wishlist item?', [
@@ -209,6 +211,7 @@ export default function Wishlist() {
                 text: 'Delete', 
                 style: 'destructive',
                 onPress: async () => {
+                    setGlobalLoading(true);
                     const original = [...wishlist];
                     setWishlist(prev => prev.filter(i => i.id !== id));
                     try {
@@ -223,13 +226,16 @@ export default function Wishlist() {
                     } catch (err: any) {
                         setWishlist(original);
                         Alert.alert('Failed to delete', err.message);
+                    } finally {
+                        setGlobalLoading(false);
                     }
                 }
             }
         ]);
-    }, [wishlist]);
+    }, [wishlist, setGlobalLoading]);
 
     const handleAddItem = async (payload: any) => {
+        setGlobalLoading(true);
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('Please try logging in again');
@@ -264,16 +270,18 @@ export default function Wishlist() {
             }
         } catch (err: any) {
             Alert.alert('Failed to add', err.message);
+        } finally {
+            setGlobalLoading(false);
         }
     };
 
     const handleUndo = async () => {
         if (!lastAction) return;
-        const { id, amount, historyId } = lastAction;
+        const { id, amount, historyId, transactionId } = lastAction;
         
+        setGlobalLoading(true);
         try {
             setLoadingId(id);
-            // 1. Revert wishlist total
             const item = wishlist.find(i => i.id === id);
             if (item) {
                 const revertedSaved = Math.max(0, item.currentSaved - amount);
@@ -285,18 +293,22 @@ export default function Wishlist() {
                 setWishlist(prev => prev.map(i => i.id === id ? { ...i, currentSaved: revertedSaved } : i));
             }
 
-            // 2. Delete history entry
             await supabase.from('ts_wishlist_history').delete().eq('id', historyId);
             setHistory(prev => ({
                 ...prev,
                 [id]: (prev[id] || []).filter(h => h.id !== historyId)
             }));
 
+            if (transactionId) {
+                await deleteTransaction(transactionId);
+            }
+
             setLastAction(null);
         } catch (err) {
             console.error('Undo failed:', err);
         } finally {
             setLoadingId(null);
+            setGlobalLoading(false);
         }
     };
 

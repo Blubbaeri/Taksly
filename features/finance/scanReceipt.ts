@@ -89,6 +89,10 @@ export const scanReceiptFromCamera = async (): Promise<ScanResult | null> => {
 
 // 🖼️ Pilih dari Galeri
 export const scanReceiptFromLibrary = async (): Promise<ScanResult | null> => {
+    // Bug #12 fix: must request permission before accessing media library
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') return null;
+
     const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.7,

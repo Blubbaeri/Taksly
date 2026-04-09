@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { scheduleTaskReminder } from '../lib/notification';
 import { breakdownTaskAI, parseSubtasks } from '../services/aiService';
+import { useLoading } from '../src/context/LoadingContext';
 
 export const TASK_STATUS = {
     PENDING: 'Pending',
@@ -27,13 +28,15 @@ export interface Task {
 }
 
 export function useTasks() {
+    const { setGlobalLoading } = useLoading();
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
     const [adding, setAdding] = useState(false);
     const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-    const fetchTasks = useCallback(async () => {
+    const fetchTasks = useCallback(async (withGlobal = false) => {
         try {
+            if (withGlobal) setGlobalLoading(true);
             setLoading(true);
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
@@ -62,11 +65,11 @@ export function useTasks() {
             setTasks(mapped);
         } catch (error: any) {
             console.error('Fetch tasks error:', error.message);
-            Alert.alert('Error', error.message || 'Failed to fetch tasks');
         } finally {
             setLoading(false);
+            if (withGlobal) setGlobalLoading(false);
         }
-    }, []);
+    }, [setGlobalLoading]);
 
     // ─── Realtime Subscription ───
     useEffect(() => {
@@ -76,7 +79,6 @@ export function useTasks() {
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'ts_tasks' },
                 () => {
-                    // Simple refresh for now to ensure consistency across clients
                     fetchTasks();
                 }
             )
@@ -99,12 +101,12 @@ export function useTasks() {
             return null;
         }
 
+        setGlobalLoading(true);
         try {
             setAdding(true);
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('User not found');
 
-            // NEW: Get current min position to put new task at the top
             const minPos = tasks.length > 0 ? Math.min(...tasks.map(t => t.position)) : 0;
             const newPos = minPos - 1;
 
@@ -140,7 +142,6 @@ export function useTasks() {
 
             setTasks(prev => [newTask, ...prev]);
 
-            // Schedule Reminder if deadline exists
             if (newTask.deadline) {
                 await scheduleTaskReminder(newTask.title, newTask.deadline);
             }
@@ -151,12 +152,14 @@ export function useTasks() {
             return null;
         } finally {
             setAdding(false);
+            setGlobalLoading(false);
         }
     };
 
     const breakdownTask = async (task: Task) => {
         if (updatingId) return;
 
+        setGlobalLoading(true);
         try {
             setUpdatingId(task.id);
             const result = await breakdownTaskAI(task.title);
@@ -180,9 +183,10 @@ export function useTasks() {
             Alert.alert('Success ✨', `Created ${subtasks.length} subtasks!`);
         } catch (error: any) {
             console.error('Breakdown error:', error.message);
-            Alert.alert('AI Error', 'Failed to generate subtasks. Check your API key.');
+            Alert.alert('AI Error', 'Failed to generate subtasks.');
         } finally {
             setUpdatingId(null);
+            setGlobalLoading(false);
         }
     };
 
@@ -191,7 +195,6 @@ export function useTasks() {
         setTasks(newTasks);
 
         try {
-            // Update all positions in background
             const updates = newTasks.map((t, index) => 
                 supabase
                     .from('ts_tasks')
@@ -212,9 +215,9 @@ export function useTasks() {
 
     const updateTaskStatus = async (id: string, newStatus: TaskStatus) => {
         if (updatingId) return;
+        setGlobalLoading(true);
         const original = [...tasks];
         
-        // Optimistic Update
         setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
         setUpdatingId(id);
 
@@ -233,14 +236,15 @@ export function useTasks() {
             Alert.alert('Error', error.message || 'Failed to update status');
         } finally {
             setUpdatingId(null);
+            setGlobalLoading(false);
         }
     };
 
     const deleteTask = async (id: string) => {
         if (updatingId) return;
+        setGlobalLoading(true);
         const original = [...tasks];
         
-        // Optimistic Update
         setTasks(prev => prev.filter(t => t.id !== id));
         setUpdatingId(id);
 
@@ -249,7 +253,7 @@ export function useTasks() {
                 .from('ts_tasks')
                 .update({ 
                     deleted_date: new Date().toISOString(),
-                    status: 'Inactive'
+                    task_status: 'Inactive'
                 })
                 .eq('id', id);
 
@@ -259,11 +263,12 @@ export function useTasks() {
             Alert.alert('Error', error.message || 'Failed to delete task');
         } finally {
             setUpdatingId(null);
+            setGlobalLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchTasks();
+        fetchTasks(true); // Initial load with global loader
     }, [fetchTasks]);
 
     return {

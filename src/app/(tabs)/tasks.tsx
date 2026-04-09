@@ -131,7 +131,15 @@ export default function Tasks() {
 
     const handleAddTask = async () => {
         const success = await addTask(newTitle, newDesc, newDeadline, newPriority, newCategory);
-        if (success) handleClose();
+        if (success) {
+            handleClose();
+            // Bug #18 fix: reset form
+            setNewTitle('');
+            setNewDesc('');
+            setNewDeadline(null);
+            setNewPriority('Medium');
+            setNewCategory('');
+        }
     };
 
     const renderHeader = () => (

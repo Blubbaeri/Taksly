@@ -3,6 +3,7 @@ import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useTheme } from '../../../theme/ThemeContext';
+import { FinanceStoreProvider } from '../../../features/finance/useFinanceStore';
 
 const PURPLE = '#7C6FFF';
 const BG_DARK = '#08080E';
@@ -37,7 +38,8 @@ export default function TabsLayout() {
     const theme = useTheme();
 
     return (
-        <Tabs
+        <FinanceStoreProvider>
+            <Tabs
             screenOptions={{
                 headerShown: false,
 
@@ -142,6 +144,7 @@ export default function TabsLayout() {
                 }}
             />
         </Tabs>
+        </FinanceStoreProvider>
     );
 }
 

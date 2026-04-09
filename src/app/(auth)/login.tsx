@@ -47,23 +47,11 @@ export default function LoginScreen() {
     const logoScale = useState(new Animated.Value(0.92))[0];
 
     useEffect(() => {
-        const checkLogin = async () => {
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (session) {
-                    router.replace("/(tabs)");
-                    return;
-                }
-            } catch (e) {
-                console.error(e);
-            }
-            Animated.parallel([
-                Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-                Animated.spring(slideAnim, { toValue: 0, tension: 60, friction: 10, useNativeDriver: true }),
-                Animated.spring(logoScale, { toValue: 1, tension: 80, friction: 8, useNativeDriver: true }),
-            ]).start();
-        };
-        checkLogin();
+        Animated.parallel([
+            Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+            Animated.spring(slideAnim, { toValue: 0, tension: 60, friction: 10, useNativeDriver: true }),
+            Animated.spring(logoScale, { toValue: 1, tension: 80, friction: 8, useNativeDriver: true }),
+        ]).start();
     }, []);
 
     const handleLogin = async () => {
@@ -79,7 +67,7 @@ export default function LoginScreen() {
             const { data: profileData, error: lookupError } = await supabase
                 .from("user_profiles")
                 .select("email")
-                .eq("full_name", identifier)
+                .eq("nickname", identifier)   // fix: was 'full_name', users set 'nickname' in profile
                 .single();
             if (lookupError || !profileData?.email) {
                 setLoading(false);
