@@ -3,11 +3,6 @@ import { View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useTheme } from '../../../theme/ThemeContext';
-import { FinanceStoreProvider } from '../../../features/finance/useFinanceStore';
-
-const PURPLE = '#7C6FFF';
-const BG_DARK = '#08080E';
-const BORDER = '#1C1C2E';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -22,9 +17,19 @@ function TabIcon({
     iconFocused: IoniconsName;
     iconUnfocused: IoniconsName;
 }) {
+    const theme = useTheme();
+    const primary = theme.colors.primary;
+
     return (
-        <View style={[styles.tabIconWrap, focused && styles.tabIconWrapActive]}>
-            {focused && <View style={styles.tabActiveGlow} />}
+        <View style={[
+            styles.tabIconWrap, 
+            focused && {
+                backgroundColor: primary + '20',
+                borderWidth: 1,
+                borderColor: primary + '35',
+            }
+        ]}>
+            {focused && <View style={[styles.tabActiveGlow, { backgroundColor: primary + '18' }]} />}
             <Ionicons
                 name={focused ? iconFocused : iconUnfocused}
                 size={21}
@@ -36,18 +41,24 @@ function TabIcon({
 
 export default function TabsLayout() {
     const theme = useTheme();
+    const { colors, isDark } = theme;
 
     return (
-        <FinanceStoreProvider>
-            <Tabs
+        <Tabs
             screenOptions={{
                 headerShown: false,
 
                 tabBarBackground: () => (
                     <BlurView
                         intensity={80}
-                        tint="dark"
-                        style={styles.tabBarBlur}
+                        tint={isDark ? 'dark' : 'light'}
+                        style={[
+                            styles.tabBarBlur,
+                            {
+                                borderColor: colors.border,
+                                backgroundColor: isDark ? 'rgba(10, 10, 18, 0.75)' : 'rgba(255, 255, 255, 0.75)',
+                            }
+                        ]}
                     />
                 ),
 
@@ -63,12 +74,12 @@ export default function TabsLayout() {
                     // shadow for floating effect
                     shadowColor: '#000',
                     shadowOffset: { width: 0, height: 12 },
-                    shadowOpacity: 0.5,
+                    shadowOpacity: isDark ? 0.5 : 0.1,
                     shadowRadius: 24,
                 },
 
-                tabBarActiveTintColor: PURPLE,
-                tabBarInactiveTintColor: '#3A3A5A',
+                tabBarActiveTintColor: colors.primary,
+                tabBarInactiveTintColor: colors.textMuted,
 
                 tabBarLabelStyle: {
                     fontSize: 10,
@@ -144,7 +155,6 @@ export default function TabsLayout() {
                 }}
             />
         </Tabs>
-        </FinanceStoreProvider>
     );
 }
 
@@ -154,8 +164,6 @@ const styles = StyleSheet.create({
         borderRadius: 26,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: BORDER,
-        backgroundColor: 'rgba(10, 10, 18, 0.75)',
     },
 
     tabIconWrap: {
@@ -167,17 +175,11 @@ const styles = StyleSheet.create({
         position: 'relative',
         overflow: 'hidden',
     },
-    tabIconWrapActive: {
-        backgroundColor: PURPLE + '20',
-        borderWidth: 1,
-        borderColor: PURPLE + '35',
-    },
     tabActiveGlow: {
         position: 'absolute',
         width: 36,
         height: 36,
         borderRadius: 18,
-        backgroundColor: PURPLE + '18',
         top: -6,
         left: -3,
     },

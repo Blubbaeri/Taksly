@@ -24,6 +24,14 @@ export interface Transaction {
     amount: number;
     note: string;
     createdAt: Date;
+    accountId?: string;
+}
+
+export interface Account {
+    id: string;
+    name: string;
+    emoji: string;
+    balance: number;
 }
 
 export interface Budget {
@@ -75,8 +83,9 @@ function useFinanceStoreInternal() {
     const [budgets, setBudgets] = useState<Budget[]>([]);
     const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
     const [insights, setInsights] = useState<Insight[]>([]);
-    const [expenseCategories, setExpenseCategories] = useState<Category[]>(EXPENSE_CATEGORIES);
-    const [incomeCategories, setIncomeCategories] = useState<Category[]>(INCOME_CATEGORIES);
+    const [expenseCategories, setExpenseCategories] = useState<Category[]>([]);
+    const [incomeCategories, setIncomeCategories] = useState<Category[]>([]);
+    const [accounts, setAccounts] = useState<Account[]>([]);
     const [userId, setUserId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [savingsFrequency, setSavingsFrequency] = useState<'daily' | 'weekly'>('daily');
@@ -104,6 +113,7 @@ function useFinanceStoreInternal() {
                 amount: Number(row.amount),
                 note: row.note || '',
                 createdAt: new Date(row.created_date),
+                accountId: row.account_id,
             }));
             setTransactions(mapped);
         }
@@ -156,6 +166,26 @@ function useFinanceStoreInternal() {
         }
     }, [userId]);
 
+    const fetchAccounts = useCallback(async () => {
+        if (!userId) return;
+        const { data, error } = await supabase
+            .from('ts_accounts')
+            .select('*')
+            .eq('user_id', userId)
+            .is('deleted_date', null);
+
+        if (error) {
+            console.error("Error fetching accounts:", error);
+        } else if (data) {
+            setAccounts(data.map(row => ({
+                id: row.id,
+                name: row.name,
+                emoji: row.emoji,
+                balance: Number(row.balance),
+            })));
+        }
+    }, [userId]);
+
     const fetchCustomCategories = useCallback(async () => {
         if (!userId) return;
         const { data, error } = await supabase
@@ -166,27 +196,39 @@ function useFinanceStoreInternal() {
         if (error) {
             console.error("Error fetching custom categories:", error);
         } else if (data) {
+            // Auto Seed if empty
+            if (data.length === 0) {
+                const seedData = [
+                    ...EXPENSE_CATEGORIES.map(c => ({ user_id: userId, type: 'expense', label: c.label, icon: c.icon, color: c.color })),
+                    ...INCOME_CATEGORIES.map(c => ({ user_id: userId, type: 'income', label: c.label, icon: c.icon, color: c.color }))
+                ];
+                
+                const { error: seedError } = await supabase.from('ts_categories').insert(seedData);
+                if (seedError) {
+                    console.error("Error seeding categories:", seedError);
+                } else {
+                    return fetchCustomCategories();
+                }
+            }
+
             const val = await AsyncStorage.getItem(`deleted_cats_${userId}`);
             const deletedIds = val ? JSON.parse(val) : [];
 
-            const expense = data.filter(c => c.type === 'expense').map(c => ({
+            const expense = data.filter(c => c.type === 'expense' && !deletedIds.includes(c.id)).map(c => ({
                 id: c.id,
                 label: c.label,
                 icon: c.icon,
                 color: c.color
             }));
-            const income = data.filter(c => c.type === 'income').map(c => ({
+            const income = data.filter(c => c.type === 'income' && !deletedIds.includes(c.id)).map(c => ({
                 id: c.id,
                 label: c.label,
                 icon: c.icon,
                 color: c.color
             }));
 
-            const activeExp = EXPENSE_CATEGORIES.filter(c => !deletedIds.includes(c.id));
-            const activeInc = INCOME_CATEGORIES.filter(c => !deletedIds.includes(c.id));
-
-            setExpenseCategories([...activeExp, ...expense]);
-            setIncomeCategories([...activeInc, ...income]);
+            setExpenseCategories(expense);
+            setIncomeCategories(income);
         }
     }, [userId]);
 
@@ -220,13 +262,14 @@ function useFinanceStoreInternal() {
                     fetchCustomCategories(),
                     AsyncStorage.getItem(`savings_freq_${userId}`).then(val => {
                         if (val === 'daily' || val === 'weekly') setSavingsFrequency(val);
-                    })
+                    }),
+                    fetchAccounts()
                 ]);
                 setGlobalLoading(false);
             };
             initialFetch();
         }
-    }, [userId, fetchTransactions, fetchBudgets, fetchSubscriptions, fetchCustomCategories, setGlobalLoading]);
+    }, [userId, fetchTransactions, fetchBudgets, fetchSubscriptions, fetchCustomCategories, fetchAccounts, setGlobalLoading]);
 
     // Handle frequency change persistence
     const updateSavingsFrequency = useCallback((freq: 'daily' | 'weekly') => {
@@ -336,14 +379,34 @@ function useFinanceStoreInternal() {
             )
             .subscribe();
 
+        const accountChannel = supabase
+            .channel('accounts-realtime')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'ts_accounts',
+                    filter: `user_id=eq.${userId}`,
+                },
+                () => {
+                    fetchAccounts();
+                }
+            )
+            .subscribe();
+
         return () => {
             supabase.removeChannel(channel);
             supabase.removeChannel(catChannel);
             supabase.removeChannel(subChannel);
+            supabase.removeChannel(accountChannel);
         };
-    }, [userId, fetchBudgets, fetchCustomCategories, fetchSubscriptions]);
+    }, [userId, fetchBudgets, fetchCustomCategories, fetchSubscriptions, fetchAccounts]);
 
     const getCategoryById = useCallback((categoryId: string): Category | undefined => {
+        if (categoryId === 'transfer') {
+            return { id: 'transfer', label: 'Transfer', icon: 'swap-horizontal-outline', color: '#3B82F6' };
+        }
         return (
             expenseCategories.find(c => c.id === categoryId) ||
             incomeCategories.find(c => c.id === categoryId)
@@ -356,6 +419,7 @@ function useFinanceStoreInternal() {
         categoryId: string,
         amount: number,
         note: string,
+        accountId?: string,
     ) => {
         if (!userId) return;
         setGlobalLoading(true);
@@ -369,6 +433,7 @@ function useFinanceStoreInternal() {
                     amount: amount,
                     note: note,
                     finance_date: new Date().toISOString().split('T')[0],
+                    account_id: accountId,
                 }])
                 .select()
                 .single();
@@ -381,8 +446,19 @@ function useFinanceStoreInternal() {
                     amount: Number(data.amount),
                     note: data.note || '',
                     createdAt: new Date(data.created_date),
+                    accountId: data.account_id,
                 };
                 setTransactions(prev => [tx, ...prev]);
+
+                // Deduct or add balance to account
+                if (accountId) {
+                    const acc = accounts.find(a => a.id === accountId);
+                    if (acc) {
+                        const newBalance = type === 'income' ? acc.balance + amount : acc.balance - amount;
+                        await supabase.from('ts_accounts').update({ balance: newBalance }).eq('id', accountId);
+                        fetchAccounts(); // Refresh locally
+                    }
+                }
 
                 const cat = getCategoryById(tx.categoryId);
                 const budget = budgets.find(b => b.categoryId === tx.categoryId);
@@ -404,7 +480,103 @@ function useFinanceStoreInternal() {
         } finally {
             setGlobalLoading(false);
         }
-    }, [userId, getCategoryById, budgets, transactions, setGlobalLoading]);
+    }, [userId, getCategoryById, budgets, transactions, accounts, setGlobalLoading]);
+
+    const addTransfer = useCallback(async (
+        fromAccountId: string,
+        toAccountId: string,
+        amount: number,
+        note: string
+    ) => {
+        if (!userId) return;
+        setGlobalLoading(true);
+        try {
+            const fromAcc = accounts.find(a => a.id === fromAccountId);
+            const toAcc = accounts.find(a => a.id === toAccountId);
+            const fromName = fromAcc?.name || 'Kantong Asal';
+            const toName = toAcc?.name || 'Kantong Tujuan';
+
+            let transferCat = expenseCategories.find(c => c.label === 'Transfer') || incomeCategories.find(c => c.label === 'Transfer');
+            
+            if (!transferCat) {
+                const { data: newCat, error: catError } = await supabase
+                    .from('ts_categories')
+                    .insert([{
+                        user_id: userId,
+                        type: 'expense',
+                        label: 'Transfer',
+                        icon: 'swap-horizontal-outline',
+                        color: '#3B82F6'
+                    }])
+                    .select()
+                    .single();
+                    
+                if (catError) throw catError;
+                transferCat = newCat;
+                fetchCustomCategories(); 
+            }
+            
+            const transferCatId = transferCat.id;
+
+            // 1. Expense transaction from source account
+            const { data: expData, error: expError } = await supabase
+                .from('ts_finance')
+                .insert([{
+                    user_id: userId,
+                    type: 'expense',
+                    category: transferCatId,
+                    amount: amount,
+                    note: note || `Transfer ke ${toName}`,
+                    finance_date: new Date().toISOString().split('T')[0],
+                    account_id: fromAccountId,
+                }])
+                .select()
+                .single();
+
+            if (expError) throw expError;
+
+            // 2. Income transaction to destination account
+            const { data: incData, error: incError } = await supabase
+                .from('ts_finance')
+                .insert([{
+                    user_id: userId,
+                    type: 'income',
+                    category: transferCatId,
+                    amount: amount,
+                    note: note || `Transfer dari ${fromName}`,
+                    finance_date: new Date().toISOString().split('T')[0],
+                    account_id: toAccountId,
+                }])
+                .select()
+                .single();
+
+            if (incError) throw incError;
+
+            // 3. Update source pocket balance
+            if (fromAcc) {
+                await supabase
+                    .from('ts_accounts')
+                    .update({ balance: fromAcc.balance - amount })
+                    .eq('id', fromAccountId);
+            }
+
+            // 4. Update destination pocket balance
+            if (toAcc) {
+                await supabase
+                    .from('ts_accounts')
+                    .update({ balance: toAcc.balance + amount })
+                    .eq('id', toAccountId);
+            }
+
+            // Refresh transactions & accounts locally
+            await Promise.all([fetchTransactions(), fetchAccounts()]);
+        } catch (error) {
+            console.error("Error inserting transfer:", error);
+            alert("Gagal melakukan transfer");
+        } finally {
+            setGlobalLoading(false);
+        }
+    }, [userId, accounts, fetchTransactions, fetchAccounts, setGlobalLoading]);
 
     const deleteTransaction = useCallback(async (id: string) => {
         setGlobalLoading(true);
@@ -457,21 +629,6 @@ function useFinanceStoreInternal() {
         if (!userId) return;
         setGlobalLoading(true);
         try {
-            if (!id.includes('-')) {
-                const val = await AsyncStorage.getItem(`deleted_cats_${userId}`);
-                const deletedIds = val ? JSON.parse(val) : [];
-                if (!deletedIds.includes(id)) {
-                    deletedIds.push(id);
-                    await AsyncStorage.setItem(`deleted_cats_${userId}`, JSON.stringify(deletedIds));
-                }
-                if (type === 'expense') {
-                    setExpenseCategories(prev => prev.filter(c => c.id !== id));
-                } else {
-                    setIncomeCategories(prev => prev.filter(c => c.id !== id));
-                }
-                return;
-            }
-
             const { error } = await supabase
                 .from('ts_categories')
                 .delete()
@@ -603,10 +760,70 @@ function useFinanceStoreInternal() {
         }
     }, [subscriptions, userId, addTransaction, fetchSubscriptions, setGlobalLoading]);
 
+    const addAccount = useCallback(async (name: string, emoji: string, initialBalance: number) => {
+        if (!userId) return;
+        setGlobalLoading(true);
+        try {
+            const { error } = await supabase
+                .from('ts_accounts')
+                .insert([{
+                    user_id: userId,
+                    name,
+                    emoji,
+                    balance: initialBalance
+                }]);
+            if (error) throw error;
+            fetchAccounts();
+        } catch (error) {
+            console.error("Error adding account:", error);
+            alert("Gagal menyimpan dompet/akun");
+        } finally {
+            setGlobalLoading(false);
+        }
+    }, [userId, fetchAccounts, setGlobalLoading]);
+
+    const deleteAccount = useCallback(async (id: string) => {
+        setGlobalLoading(true);
+        try {
+            const { error } = await supabase
+                .from('ts_accounts')
+                .update({ deleted_date: new Date().toISOString(), status: 'Inactive' })
+                .eq('id', id);
+            if (error) throw error;
+            setAccounts(prev => prev.filter(a => a.id !== id));
+        } catch (error) {
+            console.error("Error deleting account:", error);
+            alert("Gagal menghapus dompet/akun");
+        } finally {
+            setGlobalLoading(false);
+        }
+    }, [setGlobalLoading]);
+
+    const updateAccount = useCallback(async (id: string, name: string, emoji: string) => {
+        if (!userId) return;
+        setGlobalLoading(true);
+        try {
+            const { error } = await supabase
+                .from('ts_accounts')
+                .update({ name, emoji, modif_date: new Date().toISOString() })
+                .eq('id', id)
+                .eq('user_id', userId);
+            if (error) throw error;
+            fetchAccounts();
+        } catch (error) {
+            console.error("Error updating account:", error);
+            alert("Gagal memperbarui dompet/akun");
+        } finally {
+            setGlobalLoading(false);
+        }
+    }, [userId, fetchAccounts, setGlobalLoading]);
+
     // Derived stats
-    const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-    const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-    const balance = totalIncome - totalExpense;
+    const totalIncome = useMemo(() => transactions.filter(t => t.type === 'income' && getCategoryById(t.categoryId)?.label !== 'Transfer').reduce((sum, t) => sum + t.amount, 0), [transactions, getCategoryById]);
+    const totalExpense = useMemo(() => transactions.filter(t => t.type === 'expense' && getCategoryById(t.categoryId)?.label !== 'Transfer').reduce((sum, t) => sum + t.amount, 0), [transactions, getCategoryById]);
+    
+    // Total Balance = Sum of all active account balances
+    const balance = useMemo(() => accounts.reduce((sum, acc) => sum + acc.balance, 0), [accounts]);
 
     const savingsTarget = useMemo(() => {
         try {
@@ -640,10 +857,11 @@ function useFinanceStoreInternal() {
     }, [subscriptions, savingsFrequency]);
 
     return {
-        transactions, budgets, insights, expenseCategories, incomeCategories, totalIncome, totalExpense, balance, isLoading, subscriptions, savingsTarget,
-        addTransaction, deleteTransaction, addCategory, deleteCategory, getCategoryById,
+        transactions, budgets, insights, expenseCategories, incomeCategories, accounts, totalIncome, totalExpense, balance, isLoading, subscriptions, savingsTarget,
+        addTransaction, addTransfer, deleteTransaction, addCategory, deleteCategory, getCategoryById,
         refreshTransactions: fetchTransactions, fetchBudgets, setBudget, getBudgetForCategory,
         addSubscription, deleteSubscription, markSubAsPaid, savingsFrequency, updateSavingsFrequency,
+        addAccount, deleteAccount, fetchAccounts, updateAccount
     };
 }
 

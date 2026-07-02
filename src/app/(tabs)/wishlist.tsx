@@ -9,6 +9,8 @@ import {
     ActivityIndicator,
     ScrollView,
     RefreshControl,
+    Modal,
+    TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +26,7 @@ import { SummaryBanner } from '../../../components/wishlist/SummaryBanner';
 import { SortControls } from '../../../components/wishlist/SortControls';
 import WishlistItemCard from '../../../components/wishlist/WishlistItemCard';
 import { AddWishlistModal } from '../../../components/wishlist/AddWishlistModal';
+import { EditWishlistModal } from '../../../components/wishlist/EditWishlistModal';
 import { ConfettiLayer } from '../../../components/wishlist/Confetti';
 import { WishlistInsightCard } from '../../../components/wishlist/WishlistInsightCard';
 import { useWishlistInsights } from '../../../hooks/useWishlistInsights';
@@ -40,7 +43,7 @@ import {
 export default function Wishlist() {
     const theme = useTheme();
     const { setGlobalLoading } = useLoading();
-    const { addTransaction, deleteTransaction, totalIncome, totalExpense } = useFinanceStore();
+    const { addTransaction, deleteTransaction, totalIncome, totalExpense, accounts } = useFinanceStore();
     const { formatIDR } = useWishlistUtils();
 
     // ── State ──
@@ -55,6 +58,13 @@ export default function Wishlist() {
     const [loadingId, setLoadingId] = useState<string | null>(null);
     const [history, setHistory] = useState<Record<string, any[]>>({});
     const [lastAction, setLastAction] = useState<{ id: string; amount: number; historyId: string; transactionId?: string } | null>(null);
+    
+    // Pocket selection
+    const [pendingFund, setPendingFund] = useState<{ itemId: string; amount: number } | null>(null);
+    const [showPocketModal, setShowPocketModal] = useState(false);
+    const [customFundAmount, setCustomFundAmount] = useState('');
+    const [editingItem, setEditingItem] = useState<WishlistItem | null>(null);
+    const [showEditModal, setShowEditModal] = useState(false);
 
     const { itemInsights, globalInsights } = useWishlistInsights(wishlist);
 
@@ -88,6 +98,7 @@ export default function Wishlist() {
                 priority: item.priority as Priority,
                 reasoning: item.reasoning,
                 emoji: item.emoji,
+                status: item.status || 'Active',
             }));
             
             setWishlist(mapped);
@@ -148,7 +159,7 @@ export default function Wishlist() {
         return wishlist;
     }, [wishlist, sortKey]);
 
-    const handleAddFunds = useCallback(async (id: string, amount: number) => {
+    const handleAddFunds = useCallback(async (id: string, amount: number, accountId?: string) => {
         const item = wishlist.find(i => i.id === id);
         if (!item) return;
 
@@ -176,7 +187,7 @@ export default function Wishlist() {
 
             if (error) throw error;
 
-            const transactionId = await addTransaction('expense', 'wishlist', amount, `Nabung buat ${item.name} ${item.emoji}`);
+            const transactionId = await addTransaction('expense', 'wishlist', amount, `Nabung buat ${item.name} ${item.emoji}`, accountId);
 
             const { data: hData, error: hError } = await supabase
                 .from('ts_wishlist_history')
@@ -234,6 +245,28 @@ export default function Wishlist() {
         ]);
     }, [wishlist, setGlobalLoading]);
 
+    const handleToggleStatus = useCallback(async (id: string, currentStatus?: 'Active' | 'Paused') => {
+        const nextStatus = currentStatus === 'Paused' ? 'Active' : 'Paused';
+        setGlobalLoading(true);
+        const original = [...wishlist];
+        setWishlist(prev => prev.map(i => i.id === id ? { ...i, status: nextStatus } : i));
+        try {
+            const { error } = await supabase
+                .from('ts_wishlist')
+                .update({ 
+                    status: nextStatus,
+                    modif_date: new Date().toISOString()
+                })
+                .eq('id', id);
+            if (error) throw error;
+        } catch (err: any) {
+            setWishlist(original);
+            Alert.alert('Failed to update status', err.message);
+        } finally {
+            setGlobalLoading(false);
+        }
+    }, [wishlist, setGlobalLoading]);
+
     const handleAddItem = async (payload: any) => {
         setGlobalLoading(true);
         try {
@@ -270,6 +303,56 @@ export default function Wishlist() {
             }
         } catch (err: any) {
             Alert.alert('Failed to add', err.message);
+        } finally {
+            setGlobalLoading(false);
+        }
+    };
+    const handleEditItem = async (id: string, payload: any, diffAmount: number, splits?: { accountId: string; amount: number }[]) => {
+        setGlobalLoading(true);
+        try {
+            const { error } = await supabase
+                .from('ts_wishlist')
+                .update({
+                    name: payload.name,
+                    target_price: payload.target_price,
+                    target_date: payload.target_date,
+                    category: payload.category,
+                    priority: payload.priority,
+                    reasoning: payload.reasoning,
+                    emoji: payload.emoji,
+                    current_saved: payload.current_saved,
+                    modif_date: new Date().toISOString()
+                })
+                .eq('id', id);
+
+            if (error) throw error;
+
+            if (diffAmount !== 0 && splits && splits.length > 0) {
+                const txType = diffAmount > 0 ? 'expense' : 'income';
+                
+                for (const split of splits) {
+                    if (split.amount <= 0) continue;
+                    const note = diffAmount > 0 
+                        ? `Tambahan tabungan buat ${payload.name} ${payload.emoji}` 
+                        : `Kembalian tabungan buat ${payload.name} ${payload.emoji}`;
+                    
+                    await addTransaction(txType, 'wishlist', split.amount, note, split.accountId);
+                }
+
+                // Add to history
+                await supabase
+                    .from('ts_wishlist_history')
+                    .insert([{
+                        wishlist_id: id,
+                        amount: diffAmount,
+                        user_id: (await supabase.auth.getUser()).data.user?.id
+                    }]);
+            }
+
+            // Reload wishlist and history to ensure everything is perfectly synced
+            await fetchWishlist();
+        } catch (err: any) {
+            Alert.alert('Failed to update', err.message);
         } finally {
             setGlobalLoading(false);
         }
@@ -415,7 +498,14 @@ export default function Wishlist() {
                                 theme={theme}
                                 isExpanded={expandedId === item.id}
                                 onToggleExpand={id => setExpandedId(expandedId === id ? null : id)}
-                                onAddFunds={handleAddFunds}
+                                onAddFunds={async (id, amount) => {
+                                    if (accounts && accounts.length > 0) {
+                                        setPendingFund({ itemId: id, amount });
+                                        setShowPocketModal(true);
+                                    } else {
+                                        await handleAddFunds(id, amount);
+                                    }
+                                }}
                                 onDelete={handleDeleteItem}
                                 isCustomFunding={customFundId === item.id}
                                 onToggleCustomFund={id => setCustomFundId(customFundId === id ? null : id)}
@@ -424,11 +514,132 @@ export default function Wishlist() {
                                 monthlyExpenses={totalExpense}
                                 insight={itemInsights[item.id]}
                                 history={history[item.id] || []}
+                                onToggleStatus={handleToggleStatus}
+                                onEditPress={(itemToEdit) => {
+                                    setEditingItem(itemToEdit);
+                                    setShowEditModal(true);
+                                }}
                             />
                         ))
                     )}
                 </ScrollView>
             )}
+
+            {/* Modal Pilih Kantong */}
+            <Modal
+                visible={showPocketModal}
+                transparent={true}
+                animationType="slide"
+                onRequestClose={() => {
+                    setShowPocketModal(false);
+                    setPendingFund(null);
+                    setCustomFundAmount('');
+                }}
+            >
+                <View style={styles.modalOverlay}>
+                    <TouchableOpacity 
+                        style={styles.modalDismiss} 
+                        activeOpacity={1} 
+                        onPress={() => {
+                            setShowPocketModal(false);
+                            setPendingFund(null);
+                            setCustomFundAmount('');
+                        }} 
+                    />
+                    <View style={[styles.pocketModalContent, { backgroundColor: theme.colors.card }]}>
+                        <View style={styles.pocketHeaderRow}>
+                            <Text style={[styles.pocketTitle, { color: theme.colors.textPrimary }]}>
+                                Pilih Sumber Dana
+                            </Text>
+                            <TouchableOpacity 
+                                onPress={() => {
+                                    setShowPocketModal(false);
+                                    setPendingFund(null);
+                                    setCustomFundAmount('');
+                                }} 
+                                style={styles.closeModalBtn}
+                            >
+                                <Ionicons name="close" size={22} color={theme.colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+                        
+                        {pendingFund?.amount === -1 && (
+                            <TextInput
+                                style={[styles.customInputModal, { color: theme.colors.textPrimary, borderColor: theme.colors.border }]}
+                                placeholder="Masukkan nominal custom (Rp)"
+                                placeholderTextColor={theme.colors.textSecondary}
+                                keyboardType="numeric"
+                                autoFocus={true}
+                                value={customFundAmount}
+                                onChangeText={(val) => {
+                                    const clean = val.replace(/\D/g, '');
+                                    setCustomFundAmount(clean ? new Intl.NumberFormat('id-ID').format(parseInt(clean)) : '');
+                                }}
+                            />
+                        )}
+
+                        <Text style={[styles.pocketSubtitle, { color: theme.colors.textSecondary, marginTop: pendingFund?.amount === -1 ? 10 : 0 }]}>
+                            {pendingFund?.amount === -1 
+                                ? "Tentukan nominal dan pilih kantong sumber dana:" 
+                                : `Tentukan kantong yang akan dikurangi saldonya sebesar ${pendingFund ? formatIDR(pendingFund.amount) : ''}:`}
+                        </Text>
+
+                        <ScrollView style={styles.pocketList} showsVerticalScrollIndicator={false}>
+                            {accounts.map(acc => {
+                                const isEmoji = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u.test(acc.emoji);
+                                const effectiveAmount = pendingFund?.amount === -1 
+                                    ? (parseInt(customFundAmount.replace(/\D/g, '')) || 0) 
+                                    : (pendingFund?.amount || 0);
+                                const isInsufficient = acc.balance < effectiveAmount || effectiveAmount <= 0;
+
+                                return (
+                                    <TouchableOpacity
+                                        key={acc.id}
+                                        style={[
+                                            styles.pocketItem, 
+                                            { borderColor: theme.colors.border },
+                                            isInsufficient && { opacity: 0.4 }
+                                        ]}
+                                        disabled={isInsufficient}
+                                        onPress={async () => {
+                                            if (pendingFund) {
+                                                setShowPocketModal(false);
+                                                const { itemId } = pendingFund;
+                                                setPendingFund(null);
+                                                setCustomFundAmount('');
+                                                await handleAddFunds(itemId, effectiveAmount, acc.id);
+                                            }
+                                        }}
+                                    >
+                                        <View style={[styles.pocketIconBg, { backgroundColor: theme.colors.primary + '15' }]}>
+                                            {isEmoji ? (
+                                                <Text style={{ fontSize: 18 }}>{acc.emoji || '💰'}</Text>
+                                            ) : (
+                                                <Ionicons name={(acc.emoji || 'wallet-outline') as any} size={20} color={theme.colors.primary} />
+                                            )}
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.pocketName, { color: theme.colors.textPrimary }]}>
+                                                {acc.name}
+                                            </Text>
+                                            <Text style={[styles.pocketBalance, { color: theme.colors.textSecondary }]}>
+                                                Saldo: {formatIDR(acc.balance)}
+                                            </Text>
+                                        </View>
+                                        {isInsufficient && effectiveAmount > 0 ? (
+                                            <Text style={{ color: theme.colors.danger, fontSize: 12, fontWeight: '700' }}>
+                                                Saldo Kurang
+                                            </Text>
+                                        ) : (
+                                            <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
+                                        )}
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
 
             <AddWishlistModal
                 visible={showAddModal}
@@ -436,6 +647,19 @@ export default function Wishlist() {
                 onAdd={handleAddItem}
                 accentColor={accentColor}
                 theme={theme}
+            />
+
+            <EditWishlistModal
+                visible={showEditModal}
+                onClose={() => {
+                    setShowEditModal(false);
+                    setEditingItem(null);
+                }}
+                item={editingItem}
+                onEdit={handleEditItem}
+                accentColor={accentColor}
+                theme={theme}
+                accounts={accounts}
             />
         </SafeAreaView>
     );
@@ -477,4 +701,75 @@ const styles = StyleSheet.create({
     undoText: { fontSize: 13, fontWeight: '600' },
     undoBtn: { paddingHorizontal: 12, paddingVertical: 4 },
     undoBtnText: { fontSize: 13, fontWeight: '800' },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalDismiss: {
+        flex: 1,
+    },
+    pocketModalContent: {
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        paddingTop: 20,
+        paddingHorizontal: 20,
+        paddingBottom: 40,
+        maxHeight: '70%',
+    },
+    pocketHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+    },
+    pocketTitle: {
+        fontSize: 18,
+        fontWeight: '800',
+    },
+    closeModalBtn: {
+        padding: 4,
+    },
+    pocketSubtitle: {
+        fontSize: 13,
+        marginBottom: 20,
+        lineHeight: 18,
+    },
+    pocketList: {
+        maxHeight: 350,
+    },
+    pocketItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        borderRadius: 16,
+        borderWidth: 1,
+        marginBottom: 12,
+        gap: 12,
+    },
+    pocketIconBg: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    pocketName: {
+        fontSize: 15,
+        fontWeight: '700',
+        marginBottom: 2,
+    },
+    pocketBalance: {
+        fontSize: 12,
+    },
+    customInputModal: {
+        height: 48,
+        borderWidth: 1,
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        fontSize: 16,
+        fontWeight: '600',
+        marginBottom: 10,
+    },
 });

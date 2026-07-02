@@ -146,9 +146,9 @@ export default function Tasks() {
         <View>
             <Card style={styles.progressCard}>
                 <View style={styles.statsRow}>
-                    <StatChip icon="⏳" label="Pending" count={stats.pending} color="#888" />
-                    <StatChip icon="🔄" label="Active" count={stats.inProgress} color="#FFA940" />
-                    <StatChip icon="✅" label="Done" count={stats.completed} color="#52C41A" />
+                    <StatChip icon="hourglass-outline" label="Pending" count={stats.pending} color="#888" />
+                    <StatChip icon="sync-outline" label="Active" count={stats.inProgress} color="#FFA940" />
+                    <StatChip icon="checkmark-circle-outline" label="Done" count={stats.completed} color="#52C41A" />
                 </View>
             </Card>
 
@@ -304,10 +304,10 @@ export default function Tasks() {
     );
 }
 
-function StatChip({ icon, label, count, color }: { icon: string; label: string; count: number; color: string }) {
+function StatChip({ icon, label, count, color }: { icon: ComponentProps<typeof Ionicons>['name']; label: string; count: number; color: string }) {
     return (
         <View style={[styles.statChip, { backgroundColor: color + '15' }]}>
-            <Text style={{ fontSize: 18 }}>{icon}</Text>
+            <Ionicons name={icon} size={20} color={color} style={{ marginBottom: 4 }} />
             <Text style={{ fontSize: 22, fontWeight: '800', color }}>{count}</Text>
             <Text style={{ fontSize: 10, color, opacity: 0.8, fontWeight: '700', marginTop: 2 }}>{label}</Text>
         </View>

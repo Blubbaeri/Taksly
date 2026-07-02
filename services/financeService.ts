@@ -46,13 +46,13 @@ export const checkBudgetThresholds = (
     
     if (percent >= 1.0) {
         return {
-            title: "Budget Terlampaui! 🚨",
+            title: "Budget Terlampaui!",
             body: `Pengeluaran kamu untuk ${categoryName} sudah melebihi budget (${Math.round(percent * 100)}%)`,
             type: 'danger'
         };
     } else if (percent >= 0.8) {
         return {
-            title: "Waspada Budget! ⚠️",
+            title: "Waspada Budget!",
             body: `Pengeluaran ${categoryName} kamu sudah mencapai ${Math.round(percent * 100)}% dari budget.`,
             type: 'warning'
         };

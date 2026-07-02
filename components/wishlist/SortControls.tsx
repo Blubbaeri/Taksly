@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SortKey } from '../../hooks/useWishlistUtils';
 
 interface SortControlsProps {
@@ -10,10 +11,10 @@ interface SortControlsProps {
 }
 
 export function SortControls({ sortKey, setSortKey, accentColor, theme }: SortControlsProps) {
-    const SORT_OPTIONS: { key: SortKey; label: string; icon: string }[] = [
-        { key: 'priority', label: 'Priority', icon: '🔥' },
-        { key: 'progress', label: 'Progress', icon: '📊' },
-        { key: 'date', label: 'Date', icon: '📅' },
+    const SORT_OPTIONS: { key: SortKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+        { key: 'priority', label: 'Priority', icon: 'flame-outline' },
+        { key: 'progress', label: 'Progress', icon: 'stats-chart-outline' },
+        { key: 'date', label: 'Date', icon: 'calendar-outline' },
     ];
 
     return (
@@ -31,9 +32,16 @@ export function SortControls({ sortKey, setSortKey, accentColor, theme }: SortCo
                         },
                     ]}
                 >
-                    <Text style={[styles.sortChipText, { color: sortKey === opt.key ? '#FFF' : theme.colors.textSecondary }]}>
-                        {opt.icon} {opt.label}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons 
+                            name={opt.icon} 
+                            size={14} 
+                            color={sortKey === opt.key ? '#FFF' : theme.colors.textSecondary} 
+                        />
+                        <Text style={[styles.sortChipText, { color: sortKey === opt.key ? '#FFF' : theme.colors.textSecondary }]}>
+                            {opt.label}
+                        </Text>
+                    </View>
                 </TouchableOpacity>
             ))}
         </View>

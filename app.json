@@ -1,49 +1,62 @@
 {
-    "expo": {
-        "name": "Taskly",
-        "slug": "taskly",
-        "scheme": "taskly",
-        "version": "1.0.0",
-        "orientation": "portrait",
-        "icon": "./assets/images/icon.png",
-        "userInterfaceStyle": "dark",
-        "splash": {
-            "image": "./assets/images/splash-icon.png",
-            "resizeMode": "contain",
-            "backgroundColor": "#0F172A"
-        },
-        "ios": {
-            "supportsTablet": true,
-            "bundleIdentifier": "com.taksly.app"
-        },
-        "android": {
-            "adaptiveIcon": {
-                "foregroundImage": "./assets/images/adaptive-icon.png",
-                "backgroundColor": "#0F172A"
-            },
-            "intentFilters": [
-                {
-                    "action": "VIEW",
-                    "autoVerify": true,
-                    "data": [
-                        {
-                            "scheme": "taskly"
-                        }
-                    ],
-                    "category": ["BROWSABLE", "DEFAULT"]
-                }
-            ]
-        },
-        "web": {
-            "favicon": "./assets/images/favicon.png"
-        },
-        "plugins": [
-            [
-                "expo-image-picker",
-                {
-                    "cameraPermission": "Izinkan akses kamera untuk scan struk"
-                }
-            ]
-        ]
+  "expo": {
+    "name": "Taskly",
+    "slug": "taskly",
+    "scheme": "taskly",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.taskly.app"
+    },
+    "android": {
+      "package": "com.taskly.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#0F172A"
+      },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "taskly"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Izinkan akses kamera untuk scan struk"
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "750d49fb-6ec2-477e-8bba-7deac3394605"
+      }
     }
+  }
 }

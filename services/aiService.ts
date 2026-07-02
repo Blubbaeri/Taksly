@@ -75,7 +75,7 @@ export function getFinancialInsights(
         insights.push({
             id: 'over_income',
             type: 'warning',
-            title: 'Sinyal Bahaya! 🎒',
+            title: 'Sinyal Bahaya!',
             message: 'Pengeluaran lo udah lebih gede dari pemasukan bulan ini.',
             icon: 'alert-circle'
         });
@@ -83,7 +83,7 @@ export function getFinancialInsights(
         insights.push({
             id: 'good_saving',
             type: 'success',
-            title: 'Mantap Jiiwa! 💰',
+            title: 'Mantap Jiiwa!',
             message: 'Lo hemat banget bulan ini! Uangnya bisa masuk tabungan nih.',
             icon: 'checkmark-circle'
         });
@@ -102,7 +102,7 @@ export function getFinancialInsights(
             insights.push({
                 id: `over_budget_${budget.categoryId}`,
                 type: 'warning',
-                title: `Budget ${cat?.label} Jebol 🚨`,
+                title: `Budget ${cat?.label} Jebol`,
                 message: `Lo udah belanja kelewat batas di kategori ${cat?.label}. Tahan dulu ya!`,
                 icon: 'warning'
             });
@@ -118,7 +118,7 @@ export function getFinancialInsights(
         insights.push({
             id: 'high_food',
             type: 'info',
-            title: 'Foodies Sejati? 🍔',
+            title: 'Foodies Sejati?',
             message: 'Liat deh, pengeluaran makan lo udah tembus sejuta. Masak sendiri yuk?',
             icon: 'restaurant'
         });
@@ -129,7 +129,7 @@ export function getFinancialInsights(
         insights.push({
             id: 'all_good',
             type: 'info',
-            title: 'Keuangan Aman! 👍',
+            title: 'Keuangan Aman!',
             message: 'Belum ada anomali keuangan yang terdeteksi. Lanjuuut!',
             icon: 'happy'
         });

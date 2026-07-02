@@ -7,6 +7,7 @@ import {
     Vibration,
     Platform,
 } from 'react-native';
+import { useTheme } from '../../theme/ThemeContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,20 @@ export default function CustomKeyboard({
     onChange,
     maxLength = MAX_DEFAULT,
 }: CustomKeyboardProps) {
+    const theme = useTheme();
+    const { colors, isDark } = theme;
+
+    const C = {
+        containerBorder: colors.border,
+        keyBg: isDark ? '#22222E' : colors.surfaceHighlight,
+        keyBorder: colors.border,
+        keyText: colors.textPrimary,
+        backspaceBg: isDark ? '#2C1F1F' : '#FEE2E2',
+        backspaceBorder: isDark ? '#3E2C2C' : '#FCA5A5',
+        backspaceText: '#EF4444',
+        dotBg: isDark ? '#1E1E2A' : colors.surfaceHighlight,
+    };
+
     const vibrate = () => {
         if (Platform.OS !== 'web') Vibration.vibrate(30);
     };
@@ -66,7 +81,7 @@ export default function CustomKeyboard({
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { borderTopColor: C.containerBorder }]}>
             {KEYS.map((row, ri) => (
                 <View key={ri} style={styles.row}>
                     {row.map((key) => {
@@ -79,14 +94,24 @@ export default function CustomKeyboard({
                                 activeOpacity={0.6}
                                 style={[
                                     styles.key,
-                                    isBackspace && styles.keyBackspace,
-                                    isDot && styles.keyDot,
+                                    {
+                                        backgroundColor: C.keyBg,
+                                        borderColor: C.keyBorder,
+                                    },
+                                    isBackspace && {
+                                        backgroundColor: C.backspaceBg,
+                                        borderColor: C.backspaceBorder,
+                                    },
+                                    isDot && {
+                                        backgroundColor: C.dotBg,
+                                    },
                                 ]}
                             >
                                 <Text
                                     style={[
                                         styles.keyText,
-                                        isBackspace && styles.keyTextBackspace,
+                                        { color: C.keyText },
+                                        isBackspace && { color: C.backspaceText },
                                     ]}
                                 >
                                     {key}
@@ -109,7 +134,6 @@ const styles = StyleSheet.create({
         paddingBottom: 6,
         paddingTop: 12,
         borderTopWidth: 1,
-        borderTopColor: '#2C2C3E',
         marginTop: 8,
     },
     row: {
@@ -120,27 +144,13 @@ const styles = StyleSheet.create({
         flex: 1,
         height: 44,
         borderRadius: 12,
-        backgroundColor: '#22222E',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1,
-        borderColor: '#2C2C3E',
-    },
-    keyBackspace: {
-        backgroundColor: '#2C1F1F',
-        borderColor: '#3E2C2C',
-    },
-    keyDot: {
-        backgroundColor: '#1E1E2A',
     },
     keyText: {
         fontSize: 18,
         fontWeight: '500',
-        color: '#F1F1F5',
         letterSpacing: 0.5,
-    },
-    keyTextBackspace: {
-        fontSize: 17,
-        color: '#F87171',
     },
 });

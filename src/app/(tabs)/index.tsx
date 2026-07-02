@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 
 import TransactionSheet from '../../../features/finance/TransactionSheet';
 import { useFinanceStore } from '../../../features/finance/useFinanceStore';
@@ -28,6 +29,7 @@ import TransactionItem from '../../../components/finance/TransactionItem';
 import { FinanceCharts } from '../../../components/finance/FinanceCharts';
 import { BudgetCard } from '../../../components/finance/BudgetCard';
 import { BillTrackerCard } from '../../../components/finance/BillTrackerCard';
+import { AccountsList } from '../../../components/finance/AccountsList';
 import BillManagerModal from '../../../components/finance/BillManagerModal';
 import { generateFinancePDF } from '../../../features/finance/FinanceExport';
 import { Modal, TextInput } from 'react-native';
@@ -41,12 +43,14 @@ const formatRupiahFull = (amount: number): string =>
 
 export default function FinanceScreen() {
     const theme = useTheme();
+    const router = useRouter();
     const FINANCE_PRIMARY = theme.colors.primary;
     const { 
         transactions, 
         budgets,
         expenseCategories, 
         incomeCategories,
+        accounts,
         totalIncome, 
         totalExpense, 
         balance, 
@@ -55,6 +59,7 @@ export default function FinanceScreen() {
         getCategoryById, 
         isLoading, 
         addTransaction, 
+        addTransfer,
         addCategory,
         setBudget,
         getBudgetForCategory,
@@ -90,15 +95,22 @@ export default function FinanceScreen() {
         [...expenseCategories, ...incomeCategories].forEach(c => {
             map.set(c.id, c);
         });
+        map.set('transfer', { id: 'transfer', label: 'Transfer', icon: 'swap-horizontal-outline', color: '#3B82F6' });
         return map;
     }, [expenseCategories, incomeCategories]);
 
     // ─── Handlers ─────────────────
-    const handleAddTransaction = useCallback(async (type: any, catId: string, amount: number, note: string) => {
-        await addTransaction(type, catId, amount, note);
+    const handleAddTransaction = useCallback(async (type: any, catId: string, amount: number, note: string, accountId?: string, toAccountId?: string) => {
+        if (type === 'transfer') {
+            if (accountId && toAccountId) {
+                await addTransfer(accountId, toAccountId, amount, note);
+            }
+        } else {
+            await addTransaction(type, catId, amount, note, accountId);
+        }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setOcrResult(null); // Clear OCR result after submit
-    }, [addTransaction]);
+    }, [addTransaction, addTransfer]);
 
     const handleScanOCR = async () => {
         setOcrResult(null);
@@ -177,6 +189,9 @@ export default function FinanceScreen() {
                     </View>
                 )}
             </View>
+
+            {/* ── Accounts / Wallets Section ── */}
+            <AccountsList />
 
             {/* ── Bill Tracker Section ── */}
             <BillTrackerCard 
@@ -394,6 +409,12 @@ export default function FinanceScreen() {
                 <View style={styles.headerRight}>
                     <TouchableOpacity 
                         style={[styles.headerExportBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]} 
+                        onPress={() => router.push('/finance-history')}
+                    >
+                        <Ionicons name="time-outline" size={18} color={FINANCE_PRIMARY} />
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                        style={[styles.headerExportBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]} 
                         onPress={handleScanOCR}
                     >
                         <Ionicons name="camera-outline" size={18} color={FINANCE_PRIMARY} />
@@ -449,6 +470,7 @@ export default function FinanceScreen() {
                 onSubmit={handleAddTransaction}
                 expenseCategories={expenseCategories}
                 incomeCategories={incomeCategories}
+                accounts={accounts}
                 onAddCategory={addCategory}
                 initialOCRResult={ocrResult}
             />
@@ -598,7 +620,7 @@ const styles = StyleSheet.create({
     ratioLabelDot: { width: 5, height: 5, borderRadius: 3 },
     ratioLabelText: { fontSize: 11, fontWeight: '700' },
 
-    summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 26 },
+    summaryRow: { flexDirection: 'row', gap: 10, marginTop: 12, marginBottom: 26 },
 
     // Section
     sectionRow: {
@@ -783,4 +805,4 @@ const styles = StyleSheet.create({
         height: '100%',
         borderRadius: 3,
     },
-});
+});

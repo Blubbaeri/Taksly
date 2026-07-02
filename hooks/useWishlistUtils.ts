@@ -17,6 +17,7 @@ export interface WishlistItem {
     priority: Priority;
     reasoning: string;
     emoji: string;
+    status?: 'Active' | 'Paused';
 }
 
 export const PRIORITY_CONFIG: Record<Priority, { color: string; icon: keyof typeof Ionicons.glyphMap; label: string }> = {
@@ -25,16 +26,23 @@ export const PRIORITY_CONFIG: Record<Priority, { color: string; icon: keyof type
     High: { color: '#FF453A', icon: 'rocket-outline', label: 'High' },
 };
 
-export const CATEGORY_EMOJI: Record<string, string> = {
-    Tech: '💻', Work: '💼', Fashion: '👗', Travel: '✈️',
-    Health: '🏋️', Home: '🏠', Food: '🍜', Personal: '💫', Other: '📦',
+export const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+    Tech: 'laptop-outline', 
+    Work: 'briefcase-outline', 
+    Fashion: 'shirt-outline', 
+    Travel: 'airplane-outline',
+    Health: 'fitness-outline', 
+    Home: 'home-outline', 
+    Food: 'fast-food-outline', 
+    Personal: 'person-outline', 
+    Other: 'cube-outline',
 };
 
 export const QUICK_AMOUNTS = [
+    { label: '+10rb', value: 10_000 },
+    { label: '+20rb', value: 20_000 },
     { label: '+50rb', value: 50_000 },
     { label: '+100rb', value: 100_000 },
-    { label: '+200rb', value: 200_000 },
-    { label: '+500rb', value: 500_000 },
 ];
 
 export const PRIORITY_ORDER: Record<Priority, number> = { High: 0, Medium: 1, Low: 2 };
@@ -63,7 +71,7 @@ export const calcSavings = (target: number, saved: number, dateStr: string) => {
 
 export const getAIInsight = (target: number, saved: number, dateStr: string, monthlyIncome: number, monthlyExpenses: number) => {
     const { daily, remaining, diffDays } = calcSavings(target, saved, dateStr);
-    if (remaining <= 0) return { status: 'COMPLETE', message: 'Goal tercapai! Kamu hebat! 🏆', color: '#34C789' };
+    if (remaining <= 0) return { status: 'COMPLETE', message: 'Goal tercapai! Kamu hebat!', color: '#34C789' };
 
     const disposableMonthly = Math.max(0, monthlyIncome - monthlyExpenses);
     const disposableDaily = disposableMonthly / 30;
@@ -74,25 +82,25 @@ export const getAIInsight = (target: number, saved: number, dateStr: string, mon
     if (ratio <= 0.2) {
         return {
             status: 'EASY',
-            message: 'Sangat realistis! Cuma butuh seirit jajan harian kamu. ✅',
+            message: 'Sangat realistis! Cuma butuh seirit jajan harian kamu.',
             color: '#34C789',
         };
     } else if (ratio <= 0.5) {
         return {
             status: 'MODERATE',
-            message: 'Bisa banget, tapi harus agak disiplin nabungnya ya! 💪',
+            message: 'Bisa banget, tapi harus agak disiplin nabungnya ya!',
             color: '#FF9F0A',
         };
     } else if (ratio <= 1.0) {
         return {
             status: 'TOUGH',
-            message: 'Agak berat nih, mungkin perlu tambah side hustle atau mundurin deadline? 🤔',
+            message: 'Agak berat nih, mungkin perlu tambah side hustle atau mundurin deadline?',
             color: '#BF5AF2',
         };
     } else {
         return {
             status: 'UNREALISTIC',
-            message: `Waduh, butuh ${formatIDR(daily)}/hari. Melebihi budget harian kamu! 🚨`,
+            message: `Waduh, butuh ${formatIDR(daily)}/hari. Melebihi budget harian kamu!`,
             color: '#FF453A',
         };
     }

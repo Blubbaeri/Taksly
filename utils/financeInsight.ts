@@ -22,7 +22,7 @@ export const detectWaste = (transactions: any[]): WasteTip[] => {
         tips.push({
             message: `You spent Rp ${t.amount.toLocaleString()} on food/treats. Savings could go here!`,
             amount: t.amount,
-            icon: '🍔',
+            icon: 'fast-food-outline',
         });
     });
 
@@ -37,7 +37,7 @@ export const detectWaste = (transactions: any[]): WasteTip[] => {
         tips.push({
             message: `Found large miscellaneous expenses. Tracking them better could save more.`,
             amount: otherExpenses.reduce((sum, t) => sum + t.amount, 0),
-            icon: '💸',
+            icon: 'cash-outline',
         });
     }
 
@@ -49,7 +49,7 @@ export const generateGlobalRecommendations = (wishlist: any[]): string[] => {
 
     const highPriority = wishlist.filter(i => i.priority === 'High');
     if (highPriority.length > 3) {
-        recs.push('🔥 You have too many high-priority goals. Focus on 1-2 to finish faster!');
+        recs.push('You have too many high-priority goals. Focus on 1-2 to finish faster!');
     }
 
     const overdue = wishlist.filter(i => {
@@ -58,12 +58,12 @@ export const generateGlobalRecommendations = (wishlist: any[]): string[] => {
     });
 
     if (overdue.length > 0) {
-        recs.push(`⏰ ${overdue.length} goal(s) have passed their deadline. Try adjusting them!`);
+        recs.push(`${overdue.length} goal(s) have passed their deadline. Try adjusting them!`);
     }
 
     const unstarted = wishlist.filter(i => i.currentSaved === 0);
     if (unstarted.length > 2) {
-        recs.push(`🌱 You have several goals with 0% progress. Maybe delete the ones you don't really want?`);
+        recs.push(`You have several goals with 0% progress. Maybe delete the ones you don't really want?`);
     }
 
     return recs;

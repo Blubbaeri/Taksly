@@ -69,7 +69,7 @@ const BillManagerModal: React.FC<BillManagerModalProps> = ({ visible, onClose })
             amount: Number(cleanAmount(amount)),
             dueDay,
             categoryId: selectedCat || 'tagihan',
-            emoji: '📅',
+            emoji: 'calendar-outline',
             lastPaidDate: null,
         });
 

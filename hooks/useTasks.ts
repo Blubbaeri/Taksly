@@ -180,7 +180,7 @@ export function useTasks() {
                 );
             }
 
-            Alert.alert('Success ✨', `Created ${subtasks.length} subtasks!`);
+            Alert.alert('Success', `Created ${subtasks.length} subtasks!`);
         } catch (error: any) {
             console.error('Breakdown error:', error.message);
             Alert.alert('AI Error', 'Failed to generate subtasks.');

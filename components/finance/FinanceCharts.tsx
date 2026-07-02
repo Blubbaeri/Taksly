@@ -22,7 +22,7 @@ export function FinanceCharts({ transactions, expenseCategories, income, expense
     };
 
     const pieData = useMemo(() => {
-        const expenseTx = transactions.filter(t => t.type === 'expense');
+        const expenseTx = transactions.filter(t => t.type === 'expense' && expenseCategories.find(c => c.id === t.categoryId)?.label !== 'Transfer');
         const grouped: Record<string, number> = {};
 
         expenseTx.forEach(tx => {
@@ -52,7 +52,7 @@ export function FinanceCharts({ transactions, expenseCategories, income, expense
             return d.toISOString().split('T')[0];
         });
 
-        const expenseTx = transactions.filter(t => t.type === 'expense');
+        const expenseTx = transactions.filter(t => t.type === 'expense' && expenseCategories.find(c => c.id === t.categoryId)?.label !== 'Transfer');
         const dailyData = last7Days.map(date => {
             const sum = expenseTx
                 .filter(t => t.createdAt.toISOString().split('T')[0] === date)
@@ -80,6 +80,10 @@ export function FinanceCharts({ transactions, expenseCategories, income, expense
         }
     };
 
+    const totalPieAmount = useMemo(() => {
+        return pieData.reduce((sum, item) => sum + item.amount, 0);
+    }, [pieData]);
+
     return (
         <View style={styles.container}>
             {/* Spending Trend Line */}
@@ -101,7 +105,7 @@ export function FinanceCharts({ transactions, expenseCategories, income, expense
                     withHorizontalLabels={true}
                 />
             </View>
-
+ 
             {/* Income vs Expense Bar */}
             <View style={[styles.chartCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
                 <Text style={[styles.chartTitle, { color: theme.colors.textPrimary }]}>Perbandingan Saldo</Text>
@@ -116,7 +120,7 @@ export function FinanceCharts({ transactions, expenseCategories, income, expense
                     style={styles.chart}
                 />
             </View>
-
+ 
             {/* Category Breakdown Pie */}
             {pieData.length > 0 && (
                 <View style={[styles.chartCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
@@ -124,14 +128,34 @@ export function FinanceCharts({ transactions, expenseCategories, income, expense
                     <PieChart
                         data={pieData}
                         width={screenWidth - 64}
-                        height={200}
+                        height={180}
                         accessor="amount"
                         backgroundColor="transparent"
-                        paddingLeft="15"
-                        absolute
+                        paddingLeft={String((screenWidth - 64) / 4)}
                         chartConfig={chartConfig}
-                        style={styles.chart}
+                        style={{ ...styles.chart, alignSelf: 'center' as const }}
+                        hasLegend={false}
                     />
+
+                    {/* Custom Legend */}
+                    <View style={{ gap: 10, marginTop: 16, borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 16 }}>
+                        {pieData.map((item, idx) => {
+                            const percent = totalPieAmount > 0 ? Math.round((item.amount / totalPieAmount) * 100) : 0;
+                            return (
+                                <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: item.color }} />
+                                        <Text style={{ color: theme.colors.textPrimary, fontSize: 13, fontWeight: '700' }}>
+                                            {item.name}
+                                        </Text>
+                                    </View>
+                                    <Text style={{ color: theme.colors.textSecondary, fontSize: 13, fontWeight: '700' }}>
+                                        {percent}% (Rp {item.amount.toLocaleString('id-ID')})
+                                    </Text>
+                                </View>
+                            );
+                        })}
+                    </View>
                 </View>
             )}
         </View>

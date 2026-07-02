@@ -68,7 +68,7 @@ export function BudgetCard({
                             {Math.round(percent * 100)}% terpakai
                         </Text>
                         {percent >= 1 && (
-                            <Text style={styles.overText}>Over Budget! 🚨</Text>
+                            <Text style={styles.overText}>Over Budget!</Text>
                         )}
                     </View>
                 </View>

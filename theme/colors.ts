@@ -1,4 +1,4 @@
-export const colors = {
+export const darkColors = {
     // Base
     background: '#08080E',
     surface: '#12121A',
@@ -24,6 +24,35 @@ export const colors = {
     // Cards
     card: '#12121A',
 };
+
+export const lightColors = {
+    // Base
+    background: '#F9FAFB',
+    surface: '#FFFFFF',
+    surfaceHighlight: '#F3F4F6',
+
+    // Accents
+    primary: '#6366F1', // Indigo 500
+    secondary: '#818CF8', // Indigo 400
+
+    // Text
+    textPrimary: '#111827',
+    textSecondary: '#4B5563',
+    textMuted: '#9CA3AF',
+
+    // Semantic
+    success: '#22C55E',
+    danger: '#EF4444',
+    warning: '#F59E0B',
+
+    // Borders
+    border: '#E5E7EB',
+
+    // Cards
+    card: '#FFFFFF',
+};
+
+export const colors = darkColors; // Fallback for any legacy files importing colors directly
 
 export const spacing = {
     xs: 4,

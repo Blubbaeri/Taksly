@@ -31,12 +31,15 @@ const getC = (t: ReturnType<typeof useTheme>) => ({
     textMid: t.colors.textSecondary,
     muted: t.colors.border,
     sheet: t.colors.surface,
+    inputBg: t.isDark ? '#13161D' : t.colors.surfaceHighlight,
+    btnText: t.isDark ? '#041A0C' : '#FFFFFF',
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function Profile() {
     const theme = useTheme();
+    const { isDark, toggleTheme } = theme;
     const C = getC(theme);
     const { styles, statStyles, menuStyles, mfStyles } = useMemo(() => getStyles(C), [C]);
 
@@ -71,9 +74,9 @@ export default function Profile() {
                     setEditBio(data.bio || '');
                 }
 
-                const [tasksRes, financeRes] = await Promise.all([
+                const [tasksRes, accountsRes] = await Promise.all([
                     supabase.from('ts_tasks').select('id, task_status').eq('user_id', session.user.id).is('deleted_date', null),
-                    supabase.from('ts_finance').select('amount, type').eq('user_id', session.user.id).is('deleted_date', null),
+                    supabase.from('ts_accounts').select('balance').eq('user_id', session.user.id).is('deleted_date', null),
                 ]);
 
                 let taskCount = 0, doneCount = 0;
@@ -83,9 +86,8 @@ export default function Profile() {
                 }
 
                 let balance = 0;
-                if (financeRes.data) {
-                    balance = financeRes.data.reduce((acc, curr) =>
-                        curr.type === 'income' ? acc + Number(curr.amount) : acc - Number(curr.amount), 0);
+                if (accountsRes.data) {
+                    balance = accountsRes.data.reduce((acc, curr) => acc + Number(curr.balance), 0);
                 }
 
                 setStats({
@@ -158,13 +160,22 @@ export default function Profile() {
                 {/* ── Header ── */}
                 <View style={styles.header}>
                     <Text style={styles.headerTitle}>Profile</Text>
-                    <TouchableOpacity
-                        style={styles.editIconBtn}
-                        onPress={() => setShowEditModal(true)}
-                        activeOpacity={0.75}
-                    >
-                        <Ionicons name="pencil-outline" size={16} color={C.primaryText} />
-                    </TouchableOpacity>
+                    <View style={styles.headerActions}>
+                        <TouchableOpacity
+                            style={styles.editIconBtn}
+                            onPress={toggleTheme}
+                            activeOpacity={0.75}
+                        >
+                            <Ionicons name={isDark ? "moon-outline" : "sunny-outline"} size={16} color={C.primaryText} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.editIconBtn}
+                            onPress={() => setShowEditModal(true)}
+                            activeOpacity={0.75}
+                        >
+                            <Ionicons name="pencil-outline" size={16} color={C.primaryText} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 {/* ── Avatar + Identity ── */}
@@ -205,6 +216,13 @@ export default function Profile() {
                         icon="person-outline"
                         label="Edit Profile"
                         onPress={() => setShowEditModal(true)}
+                        C={C}
+                        menuStyles={menuStyles}
+                    />
+                    <MenuItem
+                        icon="chatbubbles-outline"
+                        label="Taksly AI"
+                        onPress={() => router.push('/settings/chatbot')}
                         C={C}
                         menuStyles={menuStyles}
                     />
@@ -278,7 +296,7 @@ export default function Profile() {
                             activeOpacity={0.88}
                         >
                             {saving
-                                ? <ActivityIndicator color="#041A0C" />
+                                ? <ActivityIndicator color={C.btnText} />
                                 : <Text style={styles.saveBtnText}>Simpan</Text>
                             }
                         </TouchableOpacity>
@@ -416,7 +434,7 @@ const getStyles = (C: any) => {
 
     const mfStyles = StyleSheet.create({
         wrap: {
-            backgroundColor: '#13161D',
+            backgroundColor: C.inputBg,
             borderRadius: 12,
             borderWidth: 1,
             borderColor: C.border,
@@ -515,6 +533,11 @@ const getStyles = (C: any) => {
         fontSize: 28,
         fontWeight: '800',
         letterSpacing: -1,
+    },
+    headerActions: {
+        flexDirection: 'row',
+        gap: 8,
+        alignItems: 'center',
     },
     editIconBtn: {
         width: 36,
@@ -691,7 +714,7 @@ const getStyles = (C: any) => {
         elevation: 6,
     },
     saveBtnText: {
-        color: '#041A0C',
+        color: C.btnText,
         fontSize: 15,
         fontWeight: '700',
         letterSpacing: 0.1,

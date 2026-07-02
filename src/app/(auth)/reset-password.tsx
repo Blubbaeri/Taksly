@@ -128,7 +128,7 @@ export default function ResetPasswordScreen() {
             Alert.alert("Update Failed", error.message);
         } else {
             await supabase.auth.signOut();
-            Alert.alert("Success! 🎉", "Your password has been updated. Please log in.", [
+            Alert.alert("Success!", "Your password has been updated. Please log in.", [
                 { text: "Login Now", onPress: () => router.replace("/(auth)/login") }
             ]);
         }

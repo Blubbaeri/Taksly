@@ -8,6 +8,7 @@ import { View, Alert, AppState, AppStateStatus } from 'react-native';
 import { ThemeProvider } from '../../theme/ThemeContext';
 import { SESSION_TIMEOUT } from '../../lib/auth';
 import { LoadingProvider } from '../context/LoadingContext';
+import { FinanceStoreProvider } from '../../features/finance/useFinanceStore';
 
 export default function RootLayout() {
     const lastActivityRef = useRef<number>(Date.now());
@@ -21,7 +22,7 @@ export default function RootLayout() {
     const performAutoLogout = async (reason: 'inactivity' | 'timeout') => {
         await supabase.auth.signOut();
         const message = reason === 'inactivity' 
-            ? "Your session has expired due to inactivity for 1 hour." 
+            ? "Your session has expired due to inactivity for 30 minutes." 
             : "Your login session has expired for security reasons.";
         
         Alert.alert(
@@ -83,21 +84,23 @@ export default function RootLayout() {
             <SafeAreaProvider>
                 <LoadingProvider>
                     <ThemeProvider>
-                        <View 
-                            style={{ flex: 1 }} 
-                            onStartShouldSetResponderCapture={() => {
-                                handleResetInactivity();
-                                return false; // Don't block interaction
-                            }}
-                        >
-                            <Stack screenOptions={{ headerShown: false }}>
-                                <Stack.Screen name="index" />
-                                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                                <Stack.Screen name="+not-found" options={{ title: 'Oops!' }} />
-                            </Stack>
-                            <StatusBar style="light" />
-                        </View>
+                        <FinanceStoreProvider>
+                            <View 
+                                style={{ flex: 1 }} 
+                                onStartShouldSetResponderCapture={() => {
+                                    handleResetInactivity();
+                                    return false; // Don't block interaction
+                                }}
+                            >
+                                <Stack screenOptions={{ headerShown: false }}>
+                                    <Stack.Screen name="index" />
+                                    <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                                    <Stack.Screen name="+not-found" options={{ title: 'Oops!' }} />
+                                </Stack>
+                                <StatusBar style="light" />
+                            </View>
+                        </FinanceStoreProvider>
                     </ThemeProvider>
                 </LoadingProvider>
             </SafeAreaProvider>

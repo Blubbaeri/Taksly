@@ -70,6 +70,7 @@ const styles = StyleSheet.create({
     container: {
         marginHorizontal: 16,
         marginTop: 12,
+        marginBottom: 14,
         padding: 16,
         borderRadius: 24,
         borderWidth: 1,

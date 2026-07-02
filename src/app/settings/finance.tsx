@@ -56,6 +56,16 @@ export default function FinanceSettingsScreen() {
                     onPress={() => router.push('/settings/finance-categories')}
                 />
 
+                {/* ── Section: Kantong ── */}
+                <Text style={[styles.sectionLabel, { marginTop: 18 }]}>Kantong</Text>
+
+                <SettingsItem
+                    icon="wallet-outline"
+                    label="Kelola Kantong"
+                    description="Edit nama, ikon, dan kelola dompet/akun kamu"
+                    onPress={() => router.push('/settings/finance-pockets')}
+                />
+
                 {/* Placeholder untuk fitur berikutnya */}
                 {/* 
                 <SettingsItem

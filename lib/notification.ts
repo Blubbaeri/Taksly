@@ -33,7 +33,7 @@ export const scheduleWishlistReminder = async (
     itemId: string,
     itemName: string,
     targetDate: string,
-    emoji: string = '🎯'
+    iconName: string = 'notifications-outline'
 ) => {
     const hasPermission = await requestNotificationPermissions();
     if (!hasPermission) return null;
@@ -51,8 +51,8 @@ export const scheduleWishlistReminder = async (
 
     const identifier = await Notifications.scheduleNotificationAsync({
         content: {
-            title: `Deadline Wishlist Besok! ${emoji}`,
-            body: `Besok adalah target deadline buat dapetin "${itemName}". Sudah siap belinya?`,
+            title: `Wishlist Deadline Tomorrow!`,
+            body: `Tomorrow is the deadline to get "${itemName}". Are you ready to buy it?`,
             data: { itemId, type: 'wishlist_deadline' },
             sound: true,
             priority: Notifications.AndroidNotificationPriority.HIGH,
@@ -89,7 +89,7 @@ export const scheduleTaskReminder = async (taskTitle: string, deadline: string |
 
     const identifier = await Notifications.scheduleNotificationAsync({
         content: {
-            title: "Task Reminder ⏳",
+            title: "Task Reminder",
             body: `Don't forget: ${taskTitle}`,
             data: { taskTitle, type: 'task_reminder' },
             sound: true,
