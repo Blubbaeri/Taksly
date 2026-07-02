@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import {
     View, Text, TouchableOpacity, StyleSheet,
     StatusBar, ActivityIndicator,
-    Modal, TextInput, ScrollView
+    Modal, TextInput, ScrollView, RefreshControl
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
@@ -52,12 +52,13 @@ export default function Profile() {
     const [editBio, setEditBio] = useState('');
     const [saving, setSaving] = useState(false);
     const [focusedField, setFocusedField] = useState<string | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => { fetchProfile(); }, []);
 
-    const fetchProfile = async () => {
+    const fetchProfile = async (silent = false) => {
         try {
-            setGlobalLoading(true);
+            if (!silent) setGlobalLoading(true);
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
                 setUser(session.user);
@@ -101,8 +102,14 @@ export default function Profile() {
         } catch (error) {
             console.error('Error fetching profile:', error);
         } finally {
-            setGlobalLoading(false);
+            if (!silent) setGlobalLoading(false);
+            setRefreshing(false);
         }
+    };
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        await fetchProfile(true);
     };
 
     const handleUpdateProfile = async () => {
@@ -156,6 +163,14 @@ export default function Profile() {
             <ScrollView
                 contentContainerStyle={styles.scroll}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={handleRefresh}
+                        tintColor={C.primary}
+                        colors={[C.primary]}
+                    />
+                }
             >
                 {/* ── Header ── */}
                 <View style={styles.header}>

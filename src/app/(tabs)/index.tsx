@@ -11,6 +11,7 @@ import {
     FlatList,
     LayoutAnimation,
     UIManager,
+    RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -64,6 +65,7 @@ export default function FinanceScreen() {
         setBudget,
         getBudgetForCategory,
         savingsTarget,
+        refreshAll,
     } = useFinanceStore();
 
     const [sheetVisible, setSheetVisible] = useState(false);
@@ -73,6 +75,13 @@ export default function FinanceScreen() {
     const [budgetInput, setBudgetInput] = useState('');
     const [ocrResult, setOcrResult] = useState<ScanResult | null>(null);
     const [budgetExpanded, setBudgetExpanded] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const handleRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await refreshAll();
+        setRefreshing(false);
+    }, [refreshAll]);
 
     // Bug #11 fix: enable LayoutAnimation once on mount, not on every render
     useEffect(() => {
@@ -447,6 +456,14 @@ export default function FinanceScreen() {
                     ListEmptyComponent={renderEmpty}
                     contentContainerStyle={styles.listContent}
                     showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={handleRefresh}
+                            tintColor={FINANCE_PRIMARY}
+                            colors={[FINANCE_PRIMARY]}
+                        />
+                    }
                     ListFooterComponent={<View style={{ height: 120 }} />}
                 />
             )}

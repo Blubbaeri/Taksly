@@ -32,6 +32,7 @@ export const AccountsList = () => {
     const [modalVisible, setModalVisible] = useState(false);
     const [name, setName] = useState('');
     const [emoji, setEmoji] = useState('card-outline');
+    const [initialBalance, setInitialBalance] = useState('');
     const [loading, setLoading] = useState(false);
 
     const handleAdd = async () => {
@@ -42,10 +43,14 @@ export const AccountsList = () => {
         
         setLoading(true);
         try {
-            await addAccount(name, emoji, 0);
-            setModalVisible(false);
-            setName('');
-            setEmoji('card-outline');
+            const numBalance = Number(initialBalance.replace(/[^0-9]/g, '')) || 0;
+            const success = await addAccount(name, emoji, numBalance);
+            if (success) {
+                setModalVisible(false);
+                setName('');
+                setInitialBalance('');
+                setEmoji('card-outline');
+            }
         } catch (err) {
             Alert.alert('Error', 'Gagal menambah kantong');
         } finally {
@@ -144,9 +149,21 @@ export const AccountsList = () => {
                             />
                         </View>
 
+                        <View style={styles.inputGroup}>
+                            <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Saldo Awal</Text>
+                            <TextInput 
+                                style={[styles.input, { color: theme.colors.textPrimary, borderColor: theme.colors.border }]} 
+                                value={initialBalance} 
+                                onChangeText={(text) => setInitialBalance(formatInputNumber(text))} 
+                                keyboardType="numeric"
+                                placeholderTextColor={theme.colors.textMuted}
+                                placeholder="Rp 0"
+                            />
+                        </View>
+
                         <View style={{ marginBottom: 16 }}>
                             <Text style={{ color: theme.colors.textMuted, fontSize: 12, fontStyle: 'italic', lineHeight: 18 }}>
-                                ℹ️ Saldo awal kantong ini dimulai dari Rp 0. Kamu bisa mengisi saldonya nanti melalui pencatatan transaksi pemasukan.
+                                ℹ️ Saldo ini bisa kamu ubah kapan saja dengan mencatat transaksi Pemasukan atau Pengeluaran ke kantong ini.
                             </Text>
                         </View>
 

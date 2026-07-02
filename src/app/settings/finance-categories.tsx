@@ -78,9 +78,11 @@ export default function FinanceCategoriesScreen() {
         }
         setSaving(true);
         try {
-            await addCategory(activeTab, { label, icon: newIcon, color: newColor });
-            setShowAddModal(false);
-            resetForm();
+            const success = await addCategory(activeTab, { label, icon: newIcon, color: newColor });
+            if (success) {
+                setShowAddModal(false);
+                resetForm();
+            }
         } catch (e: any) {
             Alert.alert('Gagal', e.message || 'Terjadi kesalahan.');
         } finally {

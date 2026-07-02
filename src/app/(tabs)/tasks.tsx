@@ -13,9 +13,9 @@ import {
     Animated,
     Dimensions,
     PanResponder,
-    Platform,
     FlatList,
     ScrollView,
+    RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../../theme/ThemeContext';
@@ -47,12 +47,20 @@ export default function Tasks() {
         updateTaskStatus,
         deleteTask,
         reorderTasks,
-        breakdownTask
+        breakdownTask,
+        fetchTasks,
     } = useTasks();
 
     const [activeFilter, setActiveFilter] = useState<FilterTab>('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [showAddModal, setShowAddModal] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const handleRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await fetchTasks();
+        setRefreshing(false);
+    }, [fetchTasks]);
 
     // Form state
     const [newTitle, setNewTitle] = useState('');
@@ -227,6 +235,14 @@ export default function Tasks() {
                 ListHeaderComponent={renderHeader}
                 ListEmptyComponent={renderEmpty}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={handleRefresh}
+                        tintColor={theme.colors.primary}
+                        colors={[theme.colors.primary]}
+                    />
+                }
                 renderItem={({ item }) => (
                     <TaskCard
                         task={item}

@@ -90,6 +90,16 @@ function useFinanceStoreInternal() {
     const [isLoading, setIsLoading] = useState(true);
     const [savingsFrequency, setSavingsFrequency] = useState<'daily' | 'weekly'>('daily');
 
+    const getActiveUserId = useCallback(async (): Promise<string | null> => {
+        if (userId) return userId;
+        const { data } = await supabase.auth.getSession();
+        const activeId = data?.session?.user?.id || null;
+        if (activeId) {
+            setUserId(activeId);
+        }
+        return activeId;
+    }, [userId]);
+
     // Fetch transactions
     const fetchTransactions = useCallback(async () => {
         if (!userId) {
@@ -232,8 +242,17 @@ function useFinanceStoreInternal() {
         }
     }, [userId]);
 
-    // Initial load userId
+    // Initial load userId and listen to auth changes
     useEffect(() => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (session?.user) {
+                setUserId(session.user.id);
+            } else {
+                setUserId(null);
+                setIsLoading(false);
+            }
+        });
+
         const loadUser = async () => {
             try {
                 const { data: { session } } = await supabase.auth.getSession();
@@ -248,6 +267,10 @@ function useFinanceStoreInternal() {
             }
         };
         loadUser();
+
+        return () => {
+            subscription.unsubscribe();
+        };
     }, []);
 
     // Initial fetch on userId change
@@ -421,13 +444,17 @@ function useFinanceStoreInternal() {
         note: string,
         accountId?: string,
     ) => {
-        if (!userId) return;
+        const uid = await getActiveUserId();
+        if (!uid) {
+            alert("Sesi login kamu tidak terdeteksi. Silakan logout & login kembali di Profile.");
+            return undefined;
+        }
         setGlobalLoading(true);
         try {
             const { data, error } = await supabase
                 .from('ts_finance')
                 .insert([{
-                    user_id: userId,
+                    user_id: uid,
                     type: type,
                     category: categoryId,
                     amount: amount,
@@ -516,7 +543,8 @@ function useFinanceStoreInternal() {
                 fetchCustomCategories(); 
             }
             
-            const transferCatId = transferCat.id;
+            const transferCatId = transferCat?.id;
+            if (!transferCatId) return;
 
             // 1. Expense transaction from source account
             const { data: expData, error: expError } = await supabase
@@ -599,14 +627,18 @@ function useFinanceStoreInternal() {
         }
     }, [setGlobalLoading]);
 
-    const addCategory = useCallback(async (type: TransactionType, category: Omit<Category, 'id'>) => {
-        if (!userId) return;
+    const addCategory = useCallback(async (type: TransactionType, category: Omit<Category, 'id'>): Promise<boolean> => {
+        const uid = await getActiveUserId();
+        if (!uid) {
+            alert("Sesi login kamu tidak terdeteksi. Silakan logout & login kembali di Profile.");
+            return false;
+        }
         setGlobalLoading(true);
         try {
             const { data, error } = await supabase
                 .from('ts_categories')
                 .insert([{
-                    user_id: userId,
+                    user_id: uid,
                     type: type,
                     label: category.label,
                     icon: category.icon,
@@ -617,13 +649,15 @@ function useFinanceStoreInternal() {
 
             if (error) throw error;
             fetchCustomCategories();
+            return true;
         } catch (error) {
             console.error("Error adding category:", error);
             alert("Gagal menyimpan kategori");
+            return false;
         } finally {
             setGlobalLoading(false);
         }
-    }, [userId, fetchCustomCategories, setGlobalLoading]);
+    }, [getActiveUserId, fetchCustomCategories, setGlobalLoading]);
 
     const deleteCategory = useCallback(async (id: string, type: TransactionType) => {
         if (!userId) return;
@@ -760,27 +794,33 @@ function useFinanceStoreInternal() {
         }
     }, [subscriptions, userId, addTransaction, fetchSubscriptions, setGlobalLoading]);
 
-    const addAccount = useCallback(async (name: string, emoji: string, initialBalance: number) => {
-        if (!userId) return;
+    const addAccount = useCallback(async (name: string, emoji: string, initialBalance: number): Promise<boolean> => {
+        const uid = await getActiveUserId();
+        if (!uid) {
+            alert("Sesi login kamu tidak terdeteksi. Silakan logout & login kembali di Profile.");
+            return false;
+        }
         setGlobalLoading(true);
         try {
             const { error } = await supabase
                 .from('ts_accounts')
                 .insert([{
-                    user_id: userId,
+                    user_id: uid,
                     name,
                     emoji,
                     balance: initialBalance
                 }]);
             if (error) throw error;
             fetchAccounts();
+            return true;
         } catch (error) {
             console.error("Error adding account:", error);
             alert("Gagal menyimpan dompet/akun");
+            return false;
         } finally {
             setGlobalLoading(false);
         }
-    }, [userId, fetchAccounts, setGlobalLoading]);
+    }, [getActiveUserId, fetchAccounts, setGlobalLoading]);
 
     const deleteAccount = useCallback(async (id: string) => {
         setGlobalLoading(true);
@@ -856,12 +896,24 @@ function useFinanceStoreInternal() {
         }
     }, [subscriptions, savingsFrequency]);
 
+    const refreshAll = useCallback(async () => {
+        setGlobalLoading(true);
+        await Promise.all([
+            fetchTransactions(),
+            fetchBudgets(),
+            fetchSubscriptions(),
+            fetchCustomCategories(),
+            fetchAccounts()
+        ]);
+        setGlobalLoading(false);
+    }, [fetchTransactions, fetchBudgets, fetchSubscriptions, fetchCustomCategories, fetchAccounts, setGlobalLoading]);
+
     return {
         transactions, budgets, insights, expenseCategories, incomeCategories, accounts, totalIncome, totalExpense, balance, isLoading, subscriptions, savingsTarget,
         addTransaction, addTransfer, deleteTransaction, addCategory, deleteCategory, getCategoryById,
         refreshTransactions: fetchTransactions, fetchBudgets, setBudget, getBudgetForCategory,
         addSubscription, deleteSubscription, markSubAsPaid, savingsFrequency, updateSavingsFrequency,
-        addAccount, deleteAccount, fetchAccounts, updateAccount
+        addAccount, deleteAccount, fetchAccounts, updateAccount, refreshAll
     };
 }
 
