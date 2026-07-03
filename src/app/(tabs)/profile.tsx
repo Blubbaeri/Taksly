@@ -13,14 +13,13 @@ import { useLoading } from '../../context/LoadingContext';
 
 // ─── Theme Helper ─────────────────────────────────────────────────────────────
 
-// We replace the hardcoded C object with a function that takes the current theme
 const getC = (t: ReturnType<typeof useTheme>) => ({
     bg: t.colors.background,
     surfaceHigh: t.colors.surfaceHighlight,
     border: t.colors.border,
     borderSoft: 'rgba(255,255,255,0.05)',
     primary: t.colors.primary,
-    primaryGlow: 'rgba(124,111,255,0.08)',
+    primaryGlow: 'rgba(124,111,255,0.12)',
     primaryBorder: 'rgba(124,111,255,0.2)',
     primaryText: t.colors.primary,
     danger: t.colors.danger,
@@ -33,7 +32,22 @@ const getC = (t: ReturnType<typeof useTheme>) => ({
     sheet: t.colors.surface,
     inputBg: t.isDark ? '#13161D' : t.colors.surfaceHighlight,
     btnText: t.isDark ? '#041A0C' : '#FFFFFF',
+    cardBg: t.isDark ? '#151722' : '#F8FAFC',
+    signOutBg: t.isDark ? '#1E2235' : '#EEF2F6',
 });
+
+// ─── Helper for time elapsed ──────────────────────────────────────────────────
+function formatJoinedDate(createdAt?: string) {
+    if (!createdAt) return 'Recently';
+    const created = new Date(createdAt);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - created.getTime()) / (1000 * 3600 * 24));
+    if (diffDays < 30) return `${Math.max(1, diffDays)} days ago`;
+    const diffMonths = Math.floor(diffDays / 30);
+    if (diffMonths < 12) return `${diffMonths} month${diffMonths > 1 ? 's' : ''} ago`;
+    const diffYears = Math.floor(diffMonths / 12);
+    return `${diffYears} year${diffYears > 1 ? 's' : ''} ago`;
+}
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
@@ -41,12 +55,11 @@ export default function Profile() {
     const theme = useTheme();
     const { isDark, toggleTheme } = theme;
     const C = getC(theme);
-    const { styles, statStyles, menuStyles, mfStyles } = useMemo(() => getStyles(C), [C]);
+    const { styles, menuStyles, mfStyles } = useMemo(() => getStyles(C), [C]);
 
     const { setGlobalLoading } = useLoading();
     const [user, setUser] = useState<any>(null);
     const [profile, setProfile] = useState<any>(null);
-    const [stats, setStats] = useState({ tasks: 0, finance: 0, efficiency: 0 });
     const [showEditModal, setShowEditModal] = useState(false);
     const [editNickname, setEditNickname] = useState('');
     const [editBio, setEditBio] = useState('');
@@ -74,28 +87,6 @@ export default function Profile() {
                     setEditNickname(data.nickname || '');
                     setEditBio(data.bio || '');
                 }
-
-                const [tasksRes, accountsRes] = await Promise.all([
-                    supabase.from('ts_tasks').select('id, task_status').eq('user_id', session.user.id).is('deleted_date', null),
-                    supabase.from('ts_accounts').select('balance').eq('user_id', session.user.id).is('deleted_date', null),
-                ]);
-
-                let taskCount = 0, doneCount = 0;
-                if (tasksRes.data) {
-                    taskCount = tasksRes.data.length;
-                    doneCount = tasksRes.data.filter(t => t.task_status === 'Completed').length;
-                }
-
-                let balance = 0;
-                if (accountsRes.data) {
-                    balance = accountsRes.data.reduce((acc, curr) => acc + Number(curr.balance), 0);
-                }
-
-                setStats({
-                    tasks: taskCount,
-                    finance: balance,
-                    efficiency: taskCount > 0 ? Math.round((doneCount / taskCount) * 100) : 0,
-                });
             } else {
                 router.replace('/(auth)/login');
             }
@@ -141,24 +132,16 @@ export default function Profile() {
         }
     };
 
-    // The global loader handles initial data fetching
-
-    const displayName = profile?.nickname || profile?.full_name || user?.email?.split('@')[0] || 'User';
-    const initial = displayName.substring(0, 2).toUpperCase();
-
-    const formatCurrency = (amount: number) => {
-        if (Math.abs(amount) >= 1_000_000) return `Rp ${(amount / 1_000_000).toFixed(1)}jt`;
-        if (Math.abs(amount) >= 1_000) return `Rp ${(amount / 1_000).toFixed(0)}rb`;
-        return `Rp ${amount.toLocaleString('id-ID')}`;
-    };
+    const rawName = profile?.nickname || profile?.full_name || user?.email?.split('@')[0] || 'User';
+    const nameParts = rawName.split(' ');
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(' ') || profile?.bio || user?.email?.split('@')[0] || '';
+    const initial = firstName.substring(0, 2).toUpperCase();
+    const joinedTime = formatJoinedDate(user?.created_at);
 
     return (
         <SafeAreaView style={[styles.safe, { backgroundColor: C.bg }]}>
-            <StatusBar barStyle="light-content" backgroundColor={C.bg} />
-
-            {/* Ambient orbs */}
-            <View style={styles.orbTop} />
-            <View style={styles.orbBottom} />
+            <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={C.bg} />
 
             <ScrollView
                 contentContainerStyle={styles.scroll}
@@ -172,106 +155,104 @@ export default function Profile() {
                     />
                 }
             >
-                {/* ── Header ── */}
+                {/* ── Top Header ── */}
                 <View style={styles.header}>
-                    <Text style={styles.headerTitle}>Profile</Text>
-                    <View style={styles.headerActions}>
-                        <TouchableOpacity
-                            style={styles.editIconBtn}
-                            onPress={toggleTheme}
-                            activeOpacity={0.75}
-                        >
-                            <Ionicons name={isDark ? "moon-outline" : "sunny-outline"} size={16} color={C.primaryText} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={styles.editIconBtn}
-                            onPress={() => setShowEditModal(true)}
-                            activeOpacity={0.75}
-                        >
-                            <Ionicons name="pencil-outline" size={16} color={C.primaryText} />
-                        </TouchableOpacity>
+                    <Text style={styles.headerTitle}></Text>
+                    <TouchableOpacity
+                        style={styles.editIconBtn}
+                        onPress={() => setShowEditModal(true)}
+                        activeOpacity={0.75}
+                    >
+                        <Ionicons name="ellipsis-vertical" size={20} color={C.text} />
+                    </TouchableOpacity>
+                </View>
+
+                {/* ── Avatar row + Joined Badge ── */}
+                <View style={styles.avatarRow}>
+                    <View style={styles.avatar}>
+                        <Text style={styles.avatarText}>{initial}</Text>
+                    </View>
+                    <View style={styles.joinedBlock}>
+                        <Text style={styles.joinedLabel}>Joined</Text>
+                        <Text style={styles.joinedValue}>{joinedTime}</Text>
                     </View>
                 </View>
 
-                {/* ── Avatar + Identity ── */}
-                <View style={styles.identityBlock}>
-                    <View style={styles.avatarRing}>
-                        <View style={styles.avatar}>
-                            <Text style={styles.avatarText}>{initial}</Text>
-                        </View>
-                    </View>
-                    <Text style={styles.displayName}>@{displayName}</Text>
-                    <Text style={styles.emailText}>{user?.email}</Text>
-                    {profile?.bio ? (
-                        <Text style={styles.bioText}>{profile.bio}</Text>
+                {/* ── Name Section ── */}
+                <View style={styles.nameBlock}>
+                    <Text style={styles.firstName}>{firstName}</Text>
+                    {lastName ? (
+                        <Text style={styles.lastName}>{lastName}</Text>
                     ) : null}
+                    <Text style={styles.emailSubtext}>{user?.email}</Text>
                 </View>
 
-                {/* ── Stats ── */}
-                <View style={styles.statsRow}>
-                    <StatCard label="Tasks" value={String(stats.tasks)} C={C} statStyles={statStyles} />
-                    <StatCard
-                        label="Balance"
-                        value={formatCurrency(stats.finance)}
-                        danger={stats.finance < 0}
-                        C={C}
-                        statStyles={statStyles}
-                    />
-                    <StatCard label="Efficiency" value={`${stats.efficiency}%`} highlight C={C} statStyles={statStyles} />
-                </View>
-
-                {/* ── Divider ── */}
-                <View style={styles.divider} />
-
-                {/* ── Menu ── */}
-                <View style={[styles.menuSection, { backgroundColor: C.bg }]}>
-                    <Text style={[styles.sectionLabel, { color: C.textSub }]}>Pengaturan</Text>
-
+                {/* ── Profile Section ── */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionHeading}>Profile</Text>
                     <MenuItem
-                        icon="person-outline"
-                        label="Edit Profile"
+                        icon="person"
+                        iconBg="#FF8C0018"
+                        iconColor="#FF8C00"
+                        label="Manage user"
                         onPress={() => setShowEditModal(true)}
                         C={C}
                         menuStyles={menuStyles}
                     />
+                </View>
+
+                {/* ── Settings Section ── */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionHeading}>Settings</Text>
                     <MenuItem
-                        icon="chatbubbles-outline"
-                        label="Taksly AI"
+                        icon="sparkles"
+                        iconBg="#7C6FFF18"
+                        iconColor="#7C6FFF"
+                        label="Taksly AI Assistant"
                         onPress={() => router.push('/settings/chatbot')}
                         C={C}
                         menuStyles={menuStyles}
                     />
                     <MenuItem
-                        icon="wallet-outline"
-                        label="Finance"
+                        icon="wallet"
+                        iconBg="#1D9E7518"
+                        iconColor="#1D9E75"
+                        label="Finance Categories"
                         onPress={() => router.push('/settings/finance')}
+                        C={C}
+                        menuStyles={menuStyles}
+                    />
+                    <MenuItem
+                        icon={isDark ? "moon" : "sunny"}
+                        iconBg="#0A84FF18"
+                        iconColor="#0A84FF"
+                        label={isDark ? "Dark Mode (Active)" : "Light Mode (Active)"}
+                        onPress={toggleTheme}
                         C={C}
                         menuStyles={menuStyles}
                     />
                 </View>
 
-                {/* ── Logout ── */}
-                <TouchableOpacity
-                    style={styles.logoutBtn}
-                    onPress={handleLogout}
-                    activeOpacity={0.82}
-                >
-                    <Ionicons name="log-out-outline" size={17} color={C.danger} />
-                    <Text style={styles.logoutText}>Keluar</Text>
-                </TouchableOpacity>
-
-                <Text style={styles.footer}>© 2026 Taksly</Text>
+                {/* ── Sign Out Button ── */}
+                <View style={styles.signOutWrap}>
+                    <TouchableOpacity
+                        style={styles.signOutBtn}
+                        onPress={handleLogout}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.signOutText}>Sign Out</Text>
+                    </TouchableOpacity>
+                </View>
             </ScrollView>
 
             {/* ── Edit Profile Modal ── */}
             <Modal visible={showEditModal} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalSheet}>
-                        {/* Drag handle */}
                         <View style={styles.sheetHandle} />
 
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Edit Profile</Text>
+                            <Text style={styles.modalTitle}>Manage Profile</Text>
                             <TouchableOpacity
                                 style={styles.modalCloseBtn}
                                 onPress={() => setShowEditModal(false)}
@@ -281,8 +262,8 @@ export default function Profile() {
                         </View>
 
                         <ModalField
-                            label="Nickname"
-                            placeholder="your nickname"
+                            label="Nickname / First Name"
+                            placeholder="Your name"
                             value={editNickname}
                             onChangeText={setEditNickname}
                             focused={focusedField === 'nickname'}
@@ -292,8 +273,8 @@ export default function Profile() {
                             mfStyles={mfStyles}
                         />
                         <ModalField
-                            label="Bio"
-                            placeholder="Ceritain sedikit tentang kamu..."
+                            label="Last Name / Bio"
+                            placeholder="Short description or surname"
                             value={editBio}
                             onChangeText={setEditBio}
                             focused={focusedField === 'bio'}
@@ -312,7 +293,7 @@ export default function Profile() {
                         >
                             {saving
                                 ? <ActivityIndicator color={C.btnText} />
-                                : <Text style={styles.saveBtnText}>Simpan</Text>
+                                : <Text style={styles.saveBtnText}>Save Changes</Text>
                             }
                         </TouchableOpacity>
                     </View>
@@ -324,40 +305,23 @@ export default function Profile() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatCard({ label, value, danger = false, highlight = false, C, statStyles }: {
-    label: string; value: string; danger?: boolean; highlight?: boolean; C: any; statStyles: any;
-}) {
-    return (
-        <View style={[statStyles.card, { backgroundColor: C.surfaceHigh, borderColor: C.border }, highlight && { borderColor: C.primaryBorder, backgroundColor: C.primaryGlow }]}>
-            <Text style={[statStyles.value, { color: C.text }, danger && { color: C.danger }, highlight && { color: C.primary }]}>
-                {value}
-            </Text>
-            <Text style={[statStyles.label, { color: C.textSub }]}>{label}</Text>
-        </View>
-    );
-}
-
-// Cleaned up
-
-function MenuItem({ icon, label, onPress, C, menuStyles }: {
-    icon: any; label: string; onPress?: () => void; C: any; menuStyles: any;
+function MenuItem({ icon, iconBg, iconColor, label, onPress, C, menuStyles }: {
+    icon: any; iconBg: string; iconColor: string; label: string; onPress?: () => void; C: any; menuStyles: any;
 }) {
     return (
         <TouchableOpacity
-            style={[menuStyles.item, { backgroundColor: C.surfaceHigh, borderColor: C.border }]}
+            style={menuStyles.item}
             onPress={onPress}
-            activeOpacity={0.72}
+            activeOpacity={0.65}
         >
-            <View style={[menuStyles.iconBox, { backgroundColor: C.primaryGlow }]}>
-                <Ionicons name={icon} size={16} color={C.primaryText} />
+            <View style={[menuStyles.iconBox, { backgroundColor: iconBg }]}>
+                <Ionicons name={icon} size={18} color={iconColor} />
             </View>
             <Text style={[menuStyles.label, { color: C.text }]}>{label}</Text>
-            <Ionicons name="chevron-forward" size={14} color={C.textSub} style={{ marginLeft: 'auto' }} />
+            <Ionicons name="chevron-forward" size={16} color={C.textSub} style={{ marginLeft: 'auto' }} />
         </TouchableOpacity>
     );
 }
-
-// Cleaned up
 
 function ModalField({ label, placeholder, value, onChangeText, focused, onFocus, onBlur, multiline = false, C, mfStyles }: {
     label: string; placeholder: string; value: string;
@@ -384,66 +348,26 @@ function ModalField({ label, placeholder, value, onChangeText, focused, onFocus,
     );
 }
 
-// Cleaned up
-
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const getStyles = (C: any) => {
-    const statStyles = StyleSheet.create({
-        card: {
-            flex: 1,
-            backgroundColor: C.surfaceHigh,
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: C.border,
-            paddingVertical: 16,
-            alignItems: 'center',
-        },
-        cardHighlight: {
-            borderColor: C.primaryBorder,
-            backgroundColor: C.primaryGlow,
-        },
-        value: {
-            color: C.text,
-            fontSize: 16,
-            fontWeight: '700',
-            letterSpacing: -0.3,
-            marginBottom: 4,
-        },
-        label: {
-            color: C.textSub,
-            fontSize: 11,
-            fontWeight: '600',
-            letterSpacing: 0.5,
-            textTransform: 'uppercase',
-        },
-    });
-
     const menuStyles = StyleSheet.create({
         item: {
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 12,
-            paddingVertical: 14,
-            paddingHorizontal: 16,
-            backgroundColor: C.surfaceHigh,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: C.border,
-            marginBottom: 8,
+            gap: 16,
+            paddingVertical: 12,
         },
         iconBox: {
-            width: 30,
-            height: 30,
-            borderRadius: 8,
-            backgroundColor: C.primaryGlow,
+            width: 42,
+            height: 42,
+            borderRadius: 21,
             alignItems: 'center',
             justifyContent: 'center',
         },
         label: {
-            color: C.text,
-            fontSize: 14,
-            fontWeight: '500',
+            fontSize: 15,
+            fontWeight: '600',
         },
     });
 
@@ -460,30 +384,21 @@ const getStyles = (C: any) => {
             position: 'relative',
             overflow: 'hidden',
         },
-        wrapFocused: {
-            borderColor: C.primaryBorder,
-            backgroundColor: C.primaryGlow,
-        },
         wrapMulti: {
             paddingBottom: 14,
         },
         label: {
             fontSize: 10,
             fontWeight: '700',
-            color: C.textSub,
             letterSpacing: 1.2,
             textTransform: 'uppercase',
             marginBottom: 6,
-        },
-        labelFocused: {
-            color: C.primaryText,
         },
         input: {
             color: C.text,
             fontSize: 15,
             fontWeight: '400',
             padding: 0,
-            letterSpacing: 0.2,
         },
         inputMulti: {
             minHeight: 60,
@@ -495,7 +410,6 @@ const getStyles = (C: any) => {
             left: 0,
             right: 0,
             height: 1.5,
-            backgroundColor: C.primary,
         },
     });
 
@@ -504,237 +418,164 @@ const getStyles = (C: any) => {
             flex: 1,
             backgroundColor: C.bg,
         },
-    loading: {
-        flex: 1,
-        backgroundColor: C.bg,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
+        scroll: {
+            paddingHorizontal: 24,
+            paddingTop: 12,
+            paddingBottom: 100,
+        },
+        header: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 16,
+        },
+        headerTitle: {
+            fontSize: 18,
+            fontWeight: '700',
+            color: C.text,
+        },
+        editIconBtn: {
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        avatarRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 20,
+            marginBottom: 20,
+        },
+        avatar: {
+            width: 90,
+            height: 90,
+            borderRadius: 45,
+            backgroundColor: '#1C2030',
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        avatarText: {
+            color: '#FFFFFF',
+            fontSize: 32,
+            fontWeight: '800',
+        },
+        joinedBlock: {
+            justifyContent: 'center',
+        },
+        joinedLabel: {
+            fontSize: 13,
+            color: C.textMid,
+            marginBottom: 2,
+        },
+        joinedValue: {
+            fontSize: 16,
+            fontWeight: '800',
+            color: C.text,
+        },
+        nameBlock: {
+            marginBottom: 36,
+        },
+        firstName: {
+            fontSize: 34,
+            fontWeight: '800',
+            color: C.text,
+            letterSpacing: -0.8,
+            lineHeight: 38,
+        },
+        lastName: {
+            fontSize: 32,
+            fontWeight: '400',
+            color: C.textMid,
+            letterSpacing: -0.5,
+            lineHeight: 36,
+            marginBottom: 6,
+        },
+        emailSubtext: {
+            fontSize: 13,
+            color: C.textSub,
+            marginTop: 4,
+        },
+        section: {
+            marginBottom: 32,
+        },
+        sectionHeading: {
+            fontSize: 18,
+            fontWeight: '700',
+            color: C.text,
+            marginBottom: 14,
+        },
+        signOutWrap: {
+            alignItems: 'flex-start',
+            marginTop: 8,
+        },
+        signOutBtn: {
+            backgroundColor: C.signOutBg,
+            paddingHorizontal: 28,
+            paddingVertical: 14,
+            borderRadius: 14,
+        },
+        signOutText: {
+            color: '#3B82F6',
+            fontSize: 15,
+            fontWeight: '700',
+        },
 
-    orbTop: {
-        position: 'absolute',
-        width: 280,
-        height: 280,
-        borderRadius: 140,
-        top: -120,
-        right: -100,
-        backgroundColor: 'rgba(61,255,160,0.04)',
-    },
-    orbBottom: {
-        position: 'absolute',
-        width: 240,
-        height: 240,
-        borderRadius: 120,
-        bottom: -80,
-        left: -80,
-        backgroundColor: 'rgba(34,211,238,0.025)',
-    },
+        // Modal
+        modalOverlay: {
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            justifyContent: 'flex-end',
+        },
+        modalSheet: {
+            backgroundColor: C.sheet,
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            borderTopWidth: 1,
+            borderColor: C.border,
+            padding: 24,
+            paddingBottom: 44,
+        },
+        sheetHandle: {
+            width: 36,
+            height: 3,
+            borderRadius: 2,
+            backgroundColor: C.border,
+            alignSelf: 'center',
+            marginBottom: 20,
+        },
+        modalHeader: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 20,
+        },
+        modalTitle: {
+            color: C.text,
+            fontSize: 20,
+            fontWeight: '800',
+        },
+        modalCloseBtn: {
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            backgroundColor: C.surfaceHigh,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        saveBtn: {
+            backgroundColor: C.primary,
+            borderRadius: 12,
+            paddingVertical: 16,
+            alignItems: 'center',
+            marginTop: 8,
+        },
+        saveBtnText: {
+            color: C.btnText,
+            fontSize: 15,
+            fontWeight: '700',
+        },
+    });
 
-    scroll: {
-        paddingHorizontal: 24,
-        paddingTop: 16,
-        paddingBottom: 40,
-    },
-
-    // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 36,
-    },
-    headerTitle: {
-        color: C.text,
-        fontSize: 28,
-        fontWeight: '800',
-        letterSpacing: -1,
-    },
-    headerActions: {
-        flexDirection: 'row',
-        gap: 8,
-        alignItems: 'center',
-    },
-    editIconBtn: {
-        width: 36,
-        height: 36,
-        borderRadius: 10,
-        backgroundColor: C.primaryGlow,
-        borderWidth: 1,
-        borderColor: C.primaryBorder,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-
-    // Identity
-    identityBlock: {
-        alignItems: 'center',
-        marginBottom: 28,
-    },
-    avatarRing: {
-        padding: 3,
-        borderRadius: 50,
-        borderWidth: 1.5,
-        borderColor: C.primaryBorder,
-        marginBottom: 14,
-    },
-    avatar: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: C.primaryGlow,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    avatarText: {
-        color: C.primary,
-        fontSize: 28,
-        fontWeight: '800',
-        letterSpacing: -1,
-    },
-    displayName: {
-        color: C.text,
-        fontSize: 20,
-        fontWeight: '700',
-        letterSpacing: -0.5,
-        marginBottom: 4,
-    },
-    emailText: {
-        color: C.textMid,
-        fontSize: 13,
-        fontWeight: '400',
-        marginBottom: 8,
-    },
-    bioText: {
-        color: C.textMid,
-        fontSize: 13,
-        lineHeight: 20,
-        textAlign: 'center',
-        paddingHorizontal: 20,
-    },
-
-    // Stats
-    statsRow: {
-        flexDirection: 'row',
-        gap: 8,
-        marginBottom: 28,
-    },
-
-    // Divider
-    divider: {
-        height: 1,
-        backgroundColor: C.borderSoft,
-        marginBottom: 24,
-    },
-
-    // Menu
-    menuSection: {
-        marginBottom: 24,
-    },
-    sectionLabel: {
-        color: C.textSub,
-        fontSize: 10,
-        fontWeight: '700',
-        letterSpacing: 1.2,
-        textTransform: 'uppercase',
-        marginBottom: 12,
-    },
-
-    // Logout
-    logoutBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        paddingVertical: 15,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: C.dangerBorder,
-        backgroundColor: C.dangerDim,
-        marginBottom: 28,
-    },
-    logoutText: {
-        color: C.danger,
-        fontSize: 14,
-        fontWeight: '600',
-        letterSpacing: 0.1,
-    },
-
-    footer: {
-        textAlign: 'center',
-        color: C.muted,
-        fontSize: 11,
-        fontWeight: '500',
-        letterSpacing: 0.5,
-    },
-
-    // Modal
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.75)',
-        justifyContent: 'flex-end',
-    },
-    modalSheet: {
-        backgroundColor: C.sheet,
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        borderTopWidth: 1,
-        borderLeftWidth: 1,
-        borderRightWidth: 1,
-        borderColor: C.border,
-        padding: 24,
-        paddingBottom: 44,
-    },
-    sheetHandle: {
-        width: 36,
-        height: 3,
-        borderRadius: 2,
-        backgroundColor: C.border,
-        alignSelf: 'center',
-        marginBottom: 20,
-    },
-    modalHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 20,
-    },
-    modalTitle: {
-        color: C.text,
-        fontSize: 20,
-        fontWeight: '800',
-        letterSpacing: -0.5,
-    },
-    modalCloseBtn: {
-        width: 32,
-        height: 32,
-        borderRadius: 8,
-        backgroundColor: C.surfaceHigh,
-        borderWidth: 1,
-        borderColor: C.border,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-
-    // Save button
-    saveBtn: {
-        backgroundColor: C.primary,
-        borderRadius: 12,
-        paddingVertical: 17,
-        alignItems: 'center',
-        marginTop: 8,
-        shadowColor: C.primary,
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.22,
-        shadowRadius: 18,
-        elevation: 6,
-    },
-    saveBtnText: {
-        color: C.btnText,
-        fontSize: 15,
-        fontWeight: '700',
-        letterSpacing: 0.1,
-    },
-});
-
-    return { styles, statStyles, menuStyles, mfStyles };
+    return { styles, menuStyles, mfStyles };
 };
